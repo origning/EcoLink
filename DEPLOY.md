@@ -1,4 +1,7 @@
-# 部署成网页（手机通过链接访问）
+# 部署方案说明
+
+> 日常怎么更新网站，请看 **[更新流程.md](./更新流程.md)**。
+> 本文只说明「为什么这样部署」以及「换托管时的可选方案」。
 
 先分清两件事：
 
@@ -12,79 +15,37 @@
 
 ---
 
-## 方案一：Gitee Pages（码云 Pages）
+## 当前方案：GitHub Pages（自动部署）
 
-**前提**：Gitee 账号完成**实名认证**，且仓库设置为**公开**（免费版要求）。
-
-### 1. 一键构建到 `docs/`
-
-```bash
-npm install
-npm run build:gitee
-```
-
-`build:gitee` = `tsc --noEmit && vite build`，然后把 `dist/` 复制到 `docs/`。
-（Gitee Pages 可以直接把 `docs/` 目录作为网站根目录。）
-
-### 2. 提交并推送到 Gitee
-
-```bash
-git init
-git add .
-git commit -m "site"
-git branch -M main
-git remote add origin https://gitee.com/<你的用户名>/<仓库名>.git
-git push -u origin main
-```
-
-### 3. 打开 Gitee Pages
-
-在 Gitee 仓库页面顶部菜单 **服务 → Gitee Pages**：
-
-| 选项 | 填 |
+| 项目 | 值 |
 | --- | --- |
-| 部署分支 | `main` |
-| 部署目录 | `/docs` |
+| 网站地址 | <https://origning.github.io/EcoLink/> |
+| 仓库 | <https://github.com/origning/EcoLink> |
+| 触发方式 | 推送到 `main` 分支自动构建发布 |
+| 工作流 | `.github/workflows/deploy-pages.yml` |
 
-点「**启动**」，稍等片刻，网址形如：
-
-```
-https://<用户名>.gitee.io/<仓库名>/
-```
-
-手机浏览器打开即可，可「添加到主屏幕」。
-
-### 4. 以后更新
-
-改完代码后重新执行：
-
-```bash
-npm run build:gitee
-git add -A
-git commit -m "update"
-git push
-```
-
-然后回到 **服务 → Gitee Pages**，点一次「**更新**」。
-免费版**不支持自动部署**，每次都要手动点一下。
-
-> 如果在仓库里**看不到「Gitee Pages」入口**，说明当前账号/仓库不满足条件
-> （一般是未实名认证，或该服务对免费账号有限制）。那就用方案二。
+构建配置：Build `npm run build:web`，输出目录 `dist`，Node 20。
 
 ---
 
-## 方案二：其它静态托管
+## 为什么不用 Gitee Pages
 
-构建产物同样是 `docs/`（或 `dist/`），可以直接上传：
+Gitee 的 **Gitee Pages 服务已经下线**（仓库「服务」菜单里已没有该入口），
+所以 Gitee 只能作为**源码备份 / 代码展示**，无法再发布网站。
+
+---
+
+## 其它可选的静态托管
 
 | 平台 | 做法 | 备注 |
 | --- | --- | --- |
-| **Cloudflare Pages** | 直接上传文件夹，或连 GitHub/GitLab | 免费、自带 HTTPS |
-| **Netlify** | 打开 `app.netlify.com/drop` 把 `dist/` 拖进去 | 免登录可临时预览 |
-| **Vercel** | 装 CLI 后 `npx vercel --prod` | 从本机直接传，不需要 Git 平台 |
-| **阿里云 OSS / 腾讯云 COS 等** | 开启「静态网站托管」，上传 `dist/` | 想用自己的域名访问通常要**域名备案** |
+| **Netlify** | 打开 <https://app.netlify.com/drop> 把 `dist/` 拖进去 | 最简单，不用 Git，不用命令行 |
+| **Cloudflare Pages** | 上传文件夹，或连 GitHub | 免费、自带 HTTPS |
+| **Vercel** | 本机执行 `npx vercel --prod` | 从本机直接传，不需要 Git 平台 |
+| **腾讯云 EdgeOne Pages / CloudBase** | 可关联 Gitee 自动部署 | 国内访问快，有免费额度 |
+| **阿里云 OSS / 腾讯云 COS** | 开启「静态网站托管」，上传 `dist/` | 想用自己的域名访问通常要**域名备案** |
 
-用 Git 平台连接的通用配置：
+用 Git 平台连接时的通用配置：
 
 | 项 | 值 |
 | --- | --- |
@@ -94,16 +55,18 @@ git push
 
 ---
 
-## 方案三：GitHub Pages（以后有了 GitHub 再用）
+## 关于 `docs/` 目录
 
-仓库里已经放好了自动部署工作流 `.github/workflows/deploy-pages.yml`：
-推送到 `main` 后，到仓库 **Settings → Pages → Source** 选 **GitHub Actions** 即可自动发布。
+`npm run build:gitee` 会把构建结果复制到 `docs/`，用于「**从分支直接发布**」的托管方式
+（例如 GitHub Pages 的 *Deploy from a branch → main / docs*，或 Gitee Pages 曾经的用法）。
+
+如果只使用 GitHub Actions 自动部署，`docs/` 并不是必需的，可以不提交它来保持仓库精简。
 
 ---
 
 ## 手机端注意事项
 
-- **添加到主屏幕（PWA）**：需要 **HTTPS**。Gitee Pages、Cloudflare、Netlify、Vercel 默认都是 HTTPS。
-- **数据在浏览器里**：清浏览器数据 / 换手机 / 换浏览器，数据都不会跟着走，请定期到「数据」页**导出备份**。
-- **更新后看不到新版**：手机有 Service Worker 缓存，多刷新一两次或重开页面即可。
-- **路由**：用的是 `HashRouter`，网址形如 `.../#/orders`，任何静态托管都不会 404，无需额外配置。
+- **添加到主屏幕（PWA）**：需要 **HTTPS**，上面这些平台默认都满足。
+- **更新后看不到新版**：手机有 Service Worker 缓存，多刷新一两次或重开页面。
+- **路由**：用的是 `HashRouter`，网址形如 `.../#/orders`，任何静态托管都不会 404。
+- **数据**：存在浏览器本地，换设备/清缓存前记得在「数据」页导出备份。
