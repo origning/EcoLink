@@ -1,5 +1,6 @@
 node_modules
 dist
+ecolink-site.zip
 .DS_Store
 *.log
 data/*.json
