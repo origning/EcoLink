@@ -65,7 +65,7 @@ export type AppDb = {
   ingredients: Ingredient[];
   buyers: Buyer[];
   orders: Order[];
-  /** 订货商常用 / 固定订单模板 */
+  /** 客户常用 / 固定订单模板 */
   templates: OrderTemplate[];
 };
 

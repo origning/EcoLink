@@ -41,7 +41,7 @@ export function pickingFileName(
 
 /**
  * 拣货单：按分组逐行。一行分组标题，下面是该组每样食材一行。
- * 列顺序按需求：中文、CODE、名字、数量、备注。数量为所选范围内订货商的合计。
+ * 列顺序按需求：中文、CODE、名字、数量、备注。数量为所选范围内客户的合计。
  */
 export async function exportPickingList(
   matrix: SummaryMatrix,
