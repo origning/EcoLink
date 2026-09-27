@@ -1,5 +1,6 @@
 import type { AppDb, BackupFile } from "../types";
 import { createDefaultDb } from "./defaultDb";
+import { normalizeDb } from "./normalizeDb";
 
 const DB_NAME = "ecolink";
 const DB_VERSION = 1;
@@ -127,15 +128,16 @@ export async function idbFetchDb() {
   const stored = await withStore<AppDb | undefined>("kv", "readonly", (store) =>
     store.get("db"),
   );
-  if (stored) return stored;
+  if (stored) return normalizeDb(stored);
   const initial = createDefaultDb();
   await withStore("kv", "readwrite", (store) => store.put(initial, "db"));
   return initial;
 }
 
 export async function idbPutDb(db: AppDb) {
-  await withStore("kv", "readwrite", (store) => store.put(db, "db"));
-  return db;
+  const normalized = normalizeDb(db);
+  await withStore("kv", "readwrite", (store) => store.put(normalized, "db"));
+  return normalized;
 }
 
 export async function idbPutImages(
@@ -208,7 +210,7 @@ export async function idbFetchBackup(): Promise<BackupFile> {
 }
 
 export async function idbPutBackup(payload: BackupFile) {
-  await idbPutDb(payload.db);
+  const normalized = await idbPutDb(payload.db);
   const native = await openDb();
   await new Promise<void>((resolve, reject) => {
     const tx = native.transaction("images", "readwrite");
@@ -230,5 +232,5 @@ export async function idbPutBackup(payload: BackupFile) {
     tx.onerror = () => reject(tx.error ?? new Error("idb-import-failed"));
   });
   await idbHydrateImageUrls();
-  return payload.db;
+  return normalized;
 }

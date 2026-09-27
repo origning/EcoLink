@@ -3,6 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 import type { AppDb, BackupFile } from "../src/types";
 import { createDefaultDb } from "../src/storage/defaultDb";
+import { normalizeDb } from "../src/storage/normalizeDb";
 
 const BACKUP_FORMAT = "ecolink-backup";
 const BACKUP_VERSION = 1;
@@ -18,8 +19,9 @@ export function createFileStore(dataDir: string) {
 
   function writeDbAtomic(data: unknown) {
     fs.mkdirSync(dataDir, { recursive: true });
+    const normalized = normalizeDb(data as Partial<AppDb>);
     const tmp = `${dbPath}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(data, null, 2), "utf8");
+    fs.writeFileSync(tmp, JSON.stringify(normalized, null, 2), "utf8");
     fs.renameSync(tmp, dbPath);
   }
 
@@ -32,7 +34,9 @@ export function createFileStore(dataDir: string) {
 
   function readDb(): AppDb {
     ensureData();
-    return JSON.parse(fs.readFileSync(dbPath, "utf8")) as AppDb;
+    return normalizeDb(
+      JSON.parse(fs.readFileSync(dbPath, "utf8")) as Partial<AppDb>,
+    );
   }
 
   function sendJson(res: ServerResponse, status: number, body: unknown) {

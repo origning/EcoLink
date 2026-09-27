@@ -16,67 +16,59 @@ type Labels = {
   title: string;
   rangeLabel: string;
   exportedAtLabel: string;
-  code: string;
   item: string;
+  code: string;
   nameEn: string;
-  total: string;
+  quantity: string;
+  remark: string;
   groupName: (group: Group) => string;
-  deleted: string;
   fontFamily: string;
   buyerName?: string;
 };
 
-export function summaryFileName(
+export function pickingFileName(
   from: string,
   to: string,
   locale: "zh" | "en",
   buyerName?: string,
 ) {
-  const prefix = locale === "zh" ? "采购汇总" : "procurement-summary";
+  const prefix = locale === "zh" ? "拣货单" : "picking-list";
   const who = buyerName ? `-${buyerName.replace(/[\\/:*?"<>|]/g, "_")}` : "";
   return from === to
     ? `${prefix}${who}-${from}.xlsx`
     : `${prefix}${who}-${from}_${to}.xlsx`;
 }
 
-export async function exportSummary(
+/**
+ * 拣货单：按分组逐行。一行分组标题，下面是该组每样食材一行。
+ * 列顺序按需求：中文、CODE、名字、数量、备注。数量为所选范围内订货商的合计。
+ */
+export async function exportPickingList(
   matrix: SummaryMatrix,
   labels: Labels,
   options: { buyerId?: string } = {},
 ) {
-  const buyers = options.buyerId
-    ? matrix.buyers.filter((buyer) => buyer.id === options.buyerId)
-    : matrix.buyers;
-  const singleBuyer = options.buyerId ? buyers[0] : undefined;
-  const showTotal = !singleBuyer;
+  const singleBuyer = options.buyerId
+    ? matrix.buyers.find((buyer) => buyer.id === options.buyerId)
+    : undefined;
 
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "EcoLink Procurement";
   const sheet = workbook.addWorksheet(labels.sheet, {
-    views: [{ state: "frozen", ySplit: 3, xSplit: 1 }],
+    views: [{ state: "frozen", ySplit: 3 }],
   });
 
-  const codeCol = 1;
-  const nameCol = 2;
-  const itemCol = 3;
-  const firstBuyerCol = 4;
-  const buyerCount = buyers.length;
-  const totalCol = firstBuyerCol + buyerCount;
-  const lastCol = showTotal ? totalCol : firstBuyerCol + buyerCount - 1;
+  const lastCol = 5;
+  sheet.getColumn(1).width = 22;
+  sheet.getColumn(2).width = 12;
+  sheet.getColumn(3).width = 20;
+  sheet.getColumn(4).width = 10;
+  sheet.getColumn(5).width = 24;
 
-  sheet.getColumn(codeCol).width = 12;
-  sheet.getColumn(nameCol).width = 20;
-  sheet.getColumn(itemCol).width = 20;
-  for (let i = 0; i < buyerCount; i += 1) {
-    sheet.getColumn(firstBuyerCol + i).width = 14;
-  }
-  if (showTotal) sheet.getColumn(totalCol).width = 10;
-
-  // 第 1 行：标题；第 2 行：日期标注；第 3 行：表头
   styleTitleRow(sheet, 1, lastCol, labels.title, labels.fontFamily);
   const rangeText =
     matrix.from === matrix.to ? matrix.from : `${matrix.from} ~ ${matrix.to}`;
-  const scopeText = singleBuyer?.name ? ` · ${singleBuyer.name}` : "";
+  const scopeText = singleBuyer ? ` · ${singleBuyer.name}` : "";
   styleMetaRow(
     sheet,
     2,
@@ -85,15 +77,14 @@ export async function exportSummary(
     labels.fontFamily,
   );
 
-  const headerValues = [
+  const header = sheet.getRow(3);
+  header.values = [
+    labels.item,
     labels.code,
     labels.nameEn,
-    labels.item,
-    ...buyers.map((buyer) => buyer.name || labels.deleted),
-    ...(showTotal ? [labels.total] : []),
+    labels.quantity,
+    labels.remark,
   ];
-  const header = sheet.getRow(3);
-  header.values = headerValues;
   header.eachCell((cell) => {
     cell.font = fontFor(labels.fontFamily, 10, true, "FFFFFFFF");
     cell.fill = {
@@ -113,54 +104,44 @@ export async function exportSummary(
 
   let rowIndex = 4;
   for (const section of matrix.sections) {
+    const rows = section.rows
+      .map((row) => ({
+        row,
+        quantity: singleBuyer
+          ? row.quantities[singleBuyer.id] ?? 0
+          : row.total,
+      }))
+      .filter((entry) => entry.quantity > 0);
+    if (rows.length === 0) continue;
+
     const groupRow = sheet.getRow(rowIndex);
     groupRow.getCell(1).value = labels.groupName(section.group);
     sheet.mergeCells(rowIndex, 1, rowIndex, lastCol);
-    groupRow.getCell(1).font = fontFor(labels.fontFamily, 10, true, BRAND_ARGB);
+    groupRow.getCell(1).font = fontFor(labels.fontFamily, 11, true, BRAND_ARGB);
     groupRow.getCell(1).fill = {
       type: "pattern",
       pattern: "solid",
       fgColor: { argb: BRAND_SOFT_ARGB },
     };
     groupRow.getCell(1).alignment = { vertical: "middle", horizontal: "left" };
-    groupRow.height = 20;
+    groupRow.height = 22;
     rowIndex += 1;
 
-    for (const row of section.rows) {
+    for (const { row, quantity } of rows) {
       const excelRow = sheet.getRow(rowIndex);
       excelRow.height = 22;
-
-      const codeCell = excelRow.getCell(codeCol);
-      codeCell.value = row.ingredient.code || "";
-      codeCell.font = fontFor(labels.fontFamily, 10);
-      codeCell.alignment = { vertical: "middle", horizontal: "center" };
-
-      const nameCell = excelRow.getCell(nameCol);
-      nameCell.value = row.ingredient.nameEn || labels.deleted;
-      nameCell.font = fontFor(labels.fontFamily, 10);
-      nameCell.alignment = { vertical: "middle", horizontal: "left" };
-
-      const itemCell = excelRow.getCell(itemCol);
-      itemCell.value = row.ingredient.name || "";
-      itemCell.font = fontFor(labels.fontFamily, 10);
-      itemCell.alignment = { vertical: "middle", horizontal: "center" };
-
-      buyers.forEach((buyer, index) => {
-        const quantity = row.quantities[buyer.id] ?? 0;
-        const cell = excelRow.getCell(firstBuyerCol + index);
-        cell.value = quantity > 0 ? quantity : "";
+      excelRow.getCell(1).value = row.ingredient.name || "";
+      excelRow.getCell(2).value = row.ingredient.code || "";
+      excelRow.getCell(3).value = row.ingredient.nameEn || "";
+      excelRow.getCell(4).value = quantity;
+      excelRow.getCell(5).value = row.ingredient.remark || "";
+      excelRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
         cell.font = fontFor(labels.fontFamily, 10);
-        cell.alignment = { vertical: "middle", horizontal: "center" };
-      });
-
-      if (showTotal) {
-        const totalCell = excelRow.getCell(totalCol);
-        totalCell.value = row.total;
-        totalCell.font = fontFor(labels.fontFamily, 10, true);
-        totalCell.alignment = { vertical: "middle", horizontal: "center" };
-      }
-
-      excelRow.eachCell({ includeEmpty: true }, (cell) => {
+        cell.alignment = {
+          vertical: "middle",
+          horizontal: colNumber === 3 ? "left" : "center",
+          wrapText: colNumber === 5,
+        };
         cell.border = {
           top: { style: "thin", color: { argb: "FFE5E7EB" } },
           left: { style: "thin", color: { argb: "FFE5E7EB" } },
@@ -173,19 +154,19 @@ export async function exportSummary(
   }
 
   applyPageSetup(sheet, {
-    orientation: "landscape",
+    orientation: "portrait",
     titleRows: "3:3",
     footerText: `${labels.title} · ${rangeText}`,
     fontFamily: labels.fontFamily,
   });
 
   const buffer = await workbook.xlsx.writeBuffer();
-  const locale = labels.sheet === "汇总" ? "zh" : "en";
+  const locale = labels.sheet === "拣货单" ? "zh" : "en";
   saveAs(
     new Blob([buffer], {
       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     }),
-    summaryFileName(
+    pickingFileName(
       matrix.from,
       matrix.to,
       locale,

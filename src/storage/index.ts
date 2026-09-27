@@ -1,5 +1,6 @@
 import type { AppDb, BackupFile } from "../types";
 import * as httpDb from "../api/httpDb";
+import { normalizeDb } from "./normalizeDb";
 import {
   idbDeleteImages,
   idbFetchBackup,
@@ -43,7 +44,8 @@ export function initStorage() {
 
 export async function fetchDb() {
   await initStorage();
-  return kind === "files" ? httpDb.fetchDb() : idbFetchDb();
+  const db = kind === "files" ? await httpDb.fetchDb() : await idbFetchDb();
+  return normalizeDb(db);
 }
 
 export async function putDb(db: AppDb) {

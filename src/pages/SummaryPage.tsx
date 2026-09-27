@@ -5,6 +5,7 @@ import {
   Card,
   EmptyState,
   Field,
+  GhostButton,
   PageTitle,
   PrimaryButton,
   TextInput,
@@ -12,6 +13,7 @@ import {
 } from "../components/ui";
 import { buildSummary, useAppStore } from "../store/useAppStore";
 import { exportSummary } from "../utils/exportSummary";
+import { exportPickingList } from "../utils/exportPickingList";
 import { groupLabel, todayIso } from "../utils/format";
 
 export function SummaryPage() {
@@ -22,10 +24,17 @@ export function SummaryPage() {
   const orders = useAppStore((s) => s.orders);
   const flash = useAppStore((s) => s.flash);
   const locale = useAppStore((s) => s.settings.locale);
+  const fontFamily = useAppStore((s) => s.settings.fontFamily);
   const [mode, setMode] = useState<"single" | "range">("single");
   const [from, setFrom] = useState(todayIso());
   const [to, setTo] = useState(todayIso());
+  const [exportBuyer, setExportBuyer] = useState("all");
   const [exporting, setExporting] = useState(false);
+  const [exportingPicking, setExportingPicking] = useState(false);
+  const [singleBuyerId, setSingleBuyerId] = useState(buyers[0]?.id ?? "");
+  const [singleFrom, setSingleFrom] = useState(todayIso());
+  const [singleTo, setSingleTo] = useState(todayIso());
+  const [exportingSingle, setExportingSingle] = useState(false);
 
   const rangeFrom = mode === "single" ? from : from;
   const rangeTo = mode === "single" ? from : to;
@@ -35,38 +44,120 @@ export function SummaryPage() {
     [groups, ingredients, buyers, orders, rangeFrom, rangeTo],
   );
 
+  const singleMatrix = useMemo(
+    () =>
+      buildSummary(
+        { groups, ingredients, buyers, orders },
+        singleFrom,
+        singleTo,
+      ),
+    [groups, ingredients, buyers, orders, singleFrom, singleTo],
+  );
+
+  const sortedBuyers = useMemo(
+    () => [...buyers].sort((a, b) => a.sort - b.sort),
+    [buyers],
+  );
+
+  const selectedSingleBuyerId = buyers.some((buyer) => buyer.id === singleBuyerId)
+    ? singleBuyerId
+    : (buyers[0]?.id ?? "");
+
+  const singleHasData = useMemo(
+    () =>
+      singleMatrix.sections.some((section) =>
+        section.rows.some(
+          (row) => (row.quantities[selectedSingleBuyerId] ?? 0) > 0,
+        ),
+      ),
+    [singleMatrix, selectedSingleBuyerId],
+  );
+
   const deletedBuyer = (id: string) =>
     buyers.find((buyer) => buyer.id === id)?.name || t("common.deletedItem");
+
+  const buyerId = exportBuyer === "all" ? undefined : exportBuyer;
+  const empty = matrix.sections.length === 0;
+
+  const groupName = (group: Parameters<typeof groupLabel>[0]) =>
+    groupLabel(group, t);
+
+  const summaryLabels = {
+    sheet: locale === "zh" ? "汇总" : "Summary",
+    title: t("summary.exportTitle"),
+    rangeLabel: t("summary.rangeLabel"),
+    exportedAtLabel: t("summary.exportedAtLabel"),
+    code: t("summary.code"),
+    item: t("summary.item"),
+    nameEn: t("summary.nameEn"),
+    total: t("common.total"),
+    groupName,
+    deleted: t("common.deletedItem"),
+    fontFamily,
+  };
+
+  const handleExportSummary = () => {
+    setExporting(true);
+    void exportSummary(matrix, summaryLabels, { buyerId })
+      .then(() => flash({ type: "ok", message: t("summary.exported") }))
+      .catch((error) => flash({ type: "error", message: String(error) }))
+      .finally(() => setExporting(false));
+  };
+
+  const handleExportSingleBuyer = () => {
+    if (!selectedSingleBuyerId) return;
+    setExportingSingle(true);
+    void exportSummary(singleMatrix, summaryLabels, {
+      buyerId: selectedSingleBuyerId,
+    })
+      .then(() => flash({ type: "ok", message: t("summary.exported") }))
+      .catch((error) => flash({ type: "error", message: String(error) }))
+      .finally(() => setExportingSingle(false));
+  };
+
+  const handleExportPicking = () => {
+    setExportingPicking(true);
+    void exportPickingList(
+      matrix,
+      {
+        sheet: locale === "zh" ? "拣货单" : "Picking list",
+        title: t("picking.title"),
+        rangeLabel: t("summary.rangeLabel"),
+        exportedAtLabel: t("summary.exportedAtLabel"),
+        item: t("summary.item"),
+        code: t("summary.code"),
+        nameEn: t("summary.nameEn"),
+        quantity: t("orders.quantity"),
+        remark: t("summary.remark"),
+        groupName,
+        fontFamily,
+      },
+      { buyerId },
+    )
+      .then(() => flash({ type: "ok", message: t("picking.exported") }))
+      .catch((error) => flash({ type: "error", message: String(error) }))
+      .finally(() => setExportingPicking(false));
+  };
 
   return (
     <div>
       <PageTitle
         title={t("summary.title")}
         action={
-          <PrimaryButton
-            disabled={exporting || matrix.sections.length === 0}
-            onClick={() => {
-              setExporting(true);
-              void exportSummary(matrix, {
-                sheet: locale === "zh" ? "汇总" : "Summary",
-                image: t("summary.image"),
-                code: t("summary.code"),
-                item: t("summary.item"),
-                nameEn: t("summary.nameEn"),
-                remark: t("summary.remark"),
-                total: t("common.total"),
-                groupName: (group) => groupLabel(group, t),
-                deleted: t("common.deletedItem"),
-              })
-                .then(() => flash({ type: "ok", message: t("summary.exported") }))
-                .catch((error) =>
-                  flash({ type: "error", message: String(error) }),
-                )
-                .finally(() => setExporting(false));
-            }}
-          >
-            {exporting ? t("summary.exporting") : t("summary.export")}
-          </PrimaryButton>
+          <div className="flex flex-wrap justify-end gap-1">
+            <GhostButton
+              disabled={exportingPicking || empty}
+              onClick={handleExportPicking}
+            >
+              {exportingPicking ? t("summary.exporting") : t("summary.exportPicking")}
+            </GhostButton>
+            <PrimaryButton
+              disabled={exporting || empty}
+              onClick={handleExportSummary}
+            >
+              {exporting ? t("summary.exporting") : t("summary.export")}
+            </PrimaryButton>
+          </div>
         }
       />
 
@@ -99,6 +190,77 @@ export function SummaryPage() {
             </Field>
           </div>
         )}
+        <Field label={t("summary.buyer")} hint={t("summary.buyerHint")}>
+          <select
+            value={exportBuyer}
+            onChange={(e) => setExportBuyer(e.target.value)}
+            className="min-h-11 w-full rounded-2xl border border-[var(--line)] bg-[var(--bg)] px-3 py-2.5 text-base"
+          >
+            <option value="all">{t("summary.allBuyers")}</option>
+            {matrix.buyers.map((buyer) => (
+              <option key={buyer.id} value={buyer.id}>
+                {buyer.name || deletedBuyer(buyer.id)}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </Card>
+
+      <Card className="mb-4 space-y-3">
+        <div>
+          <p className="font-semibold">{t("summary.singleBuyerTitle")}</p>
+          <p className="mt-1 text-xs text-[var(--muted)]">
+            {t("summary.singleBuyerHint")}
+          </p>
+        </div>
+        <Field label={t("summary.buyer")}>
+          <select
+            value={selectedSingleBuyerId}
+            onChange={(e) => setSingleBuyerId(e.target.value)}
+            className="min-h-11 w-full rounded-2xl border border-[var(--line)] bg-[var(--bg)] px-3 py-2.5 text-base"
+          >
+            {sortedBuyers.length === 0 ? (
+              <option value="">—</option>
+            ) : (
+              sortedBuyers.map((buyer) => (
+                <option key={buyer.id} value={buyer.id}>
+                  {buyer.name || deletedBuyer(buyer.id)}
+                </option>
+              ))
+            )}
+          </select>
+        </Field>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Field label={t("summary.from")}>
+            <TextInput
+              type="date"
+              value={singleFrom}
+              onChange={(e) => setSingleFrom(e.target.value)}
+            />
+          </Field>
+          <Field label={t("summary.to")}>
+            <TextInput
+              type="date"
+              value={singleTo}
+              onChange={(e) => setSingleTo(e.target.value)}
+            />
+          </Field>
+        </div>
+        {selectedSingleBuyerId && !singleHasData && (
+          <p className="text-xs text-[var(--muted)]">{t("summary.noBuyerData")}</p>
+        )}
+        <div className="flex justify-end">
+          <PrimaryButton
+            disabled={
+              exportingSingle || !selectedSingleBuyerId || !singleHasData
+            }
+            onClick={handleExportSingleBuyer}
+          >
+            {exportingSingle
+              ? t("summary.exporting")
+              : t("summary.exportSingleBuyer")}
+          </PrimaryButton>
+        </div>
       </Card>
 
       {matrix.sections.length === 0 ? (

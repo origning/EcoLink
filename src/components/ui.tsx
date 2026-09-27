@@ -44,18 +44,21 @@ export function GhostButton({
   children,
   onClick,
   danger,
+  disabled,
   className = "",
 }: {
   children: ReactNode;
   onClick?: () => void;
   danger?: boolean;
+  disabled?: boolean;
   className?: string;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`min-h-10 rounded-full px-3 py-1.5 text-sm font-medium ${
+      disabled={disabled}
+      className={`min-h-10 rounded-full px-3 py-1.5 text-sm font-medium disabled:opacity-50 ${
         danger ? "text-[var(--danger)]" : "text-[var(--brand)]"
       } ${className}`}
     >
@@ -111,6 +114,39 @@ export function TextArea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
       {...props}
       className={`min-h-20 w-full rounded-2xl border border-[var(--line)] bg-[var(--bg)] px-3 py-2.5 text-base outline-none focus:border-[var(--brand)] ${props.className ?? ""}`}
     />
+  );
+}
+
+export function SearchInput({
+  value,
+  onValueChange,
+  placeholder,
+  clearLabel,
+}: {
+  value: string;
+  onValueChange: (value: string) => void;
+  placeholder?: string;
+  clearLabel?: string;
+}) {
+  return (
+    <div className="relative">
+      <TextInput
+        value={value}
+        placeholder={placeholder}
+        onChange={(event) => onValueChange(event.target.value)}
+        className="w-full pr-11"
+      />
+      {value ? (
+        <button
+          type="button"
+          aria-label={clearLabel ?? "clear"}
+          onClick={() => onValueChange("")}
+          className="absolute right-1.5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-lg text-[var(--muted)] hover:bg-[var(--bg)]"
+        >
+          ×
+        </button>
+      ) : null}
+    </div>
   );
 }
 

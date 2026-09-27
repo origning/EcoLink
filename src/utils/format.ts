@@ -8,6 +8,14 @@ export function todayIso() {
   return local.toISOString().slice(0, 10);
 }
 
+/** 导出时标注的本地时间，例如 2026-09-26 14:30 */
+export function formatDateTime(date = new Date()) {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(
+    date.getDate(),
+  )} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 export function groupLabel(group: Group | undefined, t: TFunction) {
   if (!group || group.id === "__deleted") return t("common.deletedItem");
   if (group.i18nKey) return t(`groups.${group.i18nKey}`);

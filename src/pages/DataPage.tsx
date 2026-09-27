@@ -2,8 +2,9 @@ import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { saveAs } from "file-saver";
 import { fetchBackup, putBackup } from "../api/db";
-import { Card, PageTitle, PrimaryButton } from "../components/ui";
+import { Card, Field, PageTitle, PrimaryButton } from "../components/ui";
 import { useAppStore } from "../store/useAppStore";
+import { FONT_OPTIONS } from "../storage/defaultDb";
 import { todayIso } from "../utils/format";
 import type { BackupFile } from "../types";
 
@@ -34,6 +35,8 @@ export function DataPage() {
   const storageKind = useAppStore((s) => s.storageKind);
   const load = useAppStore((s) => s.load);
   const flash = useAppStore((s) => s.flash);
+  const fontFamily = useAppStore((s) => s.settings.fontFamily);
+  const setFontFamily = useAppStore((s) => s.setFontFamily);
   const fileRef = useRef<HTMLInputElement>(null);
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -78,6 +81,31 @@ export function DataPage() {
             </div>
           ))}
         </div>
+      </Card>
+
+      <Card className="mb-4">
+        <p className="mb-3 text-sm font-medium text-[var(--muted)]">
+          {t("data.exportSettings")}
+        </p>
+        <Field label={t("data.fontFamily")} hint={t("data.fontHint")}>
+          <select
+            value={fontFamily}
+            onChange={(e) => {
+              void setFontFamily(e.target.value)
+                .then(() => flash({ type: "ok", message: t("common.saved") }))
+                .catch((error) =>
+                  flash({ type: "error", message: String(error) }),
+                );
+            }}
+            className="min-h-11 w-full rounded-2xl border border-[var(--line)] bg-[var(--bg)] px-3 py-2.5 text-base"
+          >
+            {FONT_OPTIONS.map((font) => (
+              <option key={font} value={font}>
+                {font}
+              </option>
+            ))}
+          </select>
+        </Field>
       </Card>
 
       <div className="grid gap-3 sm:grid-cols-2">

@@ -41,12 +41,32 @@ export type Order = {
   updatedAt: number;
 };
 
+/** 固定订单保存数量，常用订单只保存常点的食材清单（数量为 0） */
+export type OrderTemplateKind = "common" | "fixed";
+
+export type OrderTemplate = {
+  id: string;
+  buyerId: string;
+  kind: OrderTemplateKind;
+  name: string;
+  items: OrderItem[];
+  updatedAt: number;
+};
+
+export type AppSettings = {
+  locale: Locale;
+  /** 导出 Excel 使用的字体名 */
+  fontFamily: string;
+};
+
 export type AppDb = {
-  settings: { locale: Locale };
+  settings: AppSettings;
   groups: Group[];
   ingredients: Ingredient[];
   buyers: Buyer[];
   orders: Order[];
+  /** 订货商常用 / 固定订单模板 */
+  templates: OrderTemplate[];
 };
 
 export type BackupImages = Record<string, { preview: string; thumb: string }>;

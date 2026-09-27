@@ -8,6 +8,7 @@ import {
 } from "../api/db";
 import i18n from "../i18n";
 import { normalizeIngredient } from "../utils/format";
+import { DEFAULT_FONT_FAMILY } from "../storage/defaultDb";
 import type {
   AppDb,
   Buyer,
@@ -15,6 +16,8 @@ import type {
   Ingredient,
   Locale,
   Order,
+  OrderTemplate,
+  OrderTemplateKind,
   SummaryMatrix,
 } from "../types";
 import type { StorageKind } from "../api/db";
@@ -50,6 +53,15 @@ type AppState = AppDb & {
     buyerId: string;
     items: { ingredientId: string; quantity: number }[];
   }) => Promise<void>;
+  saveTemplate: (input: {
+    id?: string;
+    buyerId: string;
+    kind: OrderTemplateKind;
+    name: string;
+    items: { ingredientId: string; quantity: number }[];
+  }) => Promise<void>;
+  deleteTemplate: (id: string) => Promise<void>;
+  setFontFamily: (fontFamily: string) => Promise<void>;
   clearNotice: () => void;
   flash: (notice: Exclude<Notice, null>) => void;
 };
@@ -65,6 +77,7 @@ function toDb(state: AppState): AppDb {
     ingredients: state.ingredients,
     buyers: state.buyers,
     orders: state.orders,
+    templates: state.templates,
   };
 }
 
@@ -168,11 +181,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   saving: false,
   storageKind: "files",
   notice: null,
-  settings: { locale: "zh" },
+  settings: { locale: "zh", fontFamily: DEFAULT_FONT_FAMILY },
   groups: [],
   ingredients: [],
   buyers: [],
   orders: [],
+  templates: [],
 
   flash: (notice) => {
     set({ notice });
@@ -208,7 +222,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setLocale: async (locale) => {
     await i18n.changeLanguage(locale);
-    await get().persist({ settings: { locale } });
+    await get().persist({ settings: { ...get().settings, locale } });
   },
 
   addGroup: async (name) => {
@@ -333,6 +347,42 @@ export const useAppStore = create<AppState>((set, get) => ({
       orders: existing
         ? orders.map((order) => (order.id === existing.id ? next : order))
         : [...orders, next],
+    });
+  },
+
+  saveTemplate: async ({ id, buyerId, kind, name, items }) => {
+    const templates = get().templates;
+    const existing = id ? templates.find((item) => item.id === id) : undefined;
+    const cleaned = items
+      .filter((item) => (kind === "fixed" ? item.quantity > 0 : true))
+      .map((item) => ({
+        ingredientId: item.ingredientId,
+        quantity: kind === "fixed" ? item.quantity : 0,
+      }));
+    const next: OrderTemplate = {
+      id: existing?.id ?? newId("template"),
+      buyerId,
+      kind,
+      name: name.trim(),
+      items: cleaned,
+      updatedAt: Date.now(),
+    };
+    await get().persist({
+      templates: existing
+        ? templates.map((item) => (item.id === next.id ? next : item))
+        : [...templates, next],
+    });
+  },
+
+  deleteTemplate: async (id) => {
+    await get().persist({
+      templates: get().templates.filter((item) => item.id !== id),
+    });
+  },
+
+  setFontFamily: async (fontFamily) => {
+    await get().persist({
+      settings: { ...get().settings, fontFamily },
     });
   },
 }));

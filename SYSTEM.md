@@ -12,10 +12,11 @@ H5 网站，给采购人员用：
 3. 管理订货商（下单的门店 / 客户）
 4. 按某一天给某个订货商录入数量
 5. 按一天或一段日期汇总成矩阵表
-6. 导出带缩略图的 Excel
-7. 导出 / 导入整份业务备份（含图片）
-8. 界面中 / 英切换
-9. 电脑、Mac、手机都能各自单独使用（数据默认不互通，可用备份互导）
+6. 导出 A4 排版的 Excel（采购汇总、单个订货商汇总、拣货单），字体可在「数据」页选择
+7. 订货商常用订单（常点清单）/ 固定订单（带数量）模板，方便重复录入
+8. 导出 / 导入整份业务备份（含图片）
+9. 界面中 / 英切换
+10. 电脑、Mac、手机都能各自单独使用（数据默认不互通，可用备份互导）
 
 食材名、订货商名、自定义分组名不随语言翻译。只有界面文案和三个预置分组名会切换。
 
@@ -158,11 +159,12 @@ IndexedDB / ecolink / images # { preview, thumb } jpeg Blob
 
 ```json
 {
-  "settings": { "locale": "zh" },
+  "settings": { "locale": "zh", "fontFamily": "微软雅黑" },
   "groups": [],
   "ingredients": [],
   "buyers": [],
-  "orders": []
+  "orders": [],
+  "templates": []
 }
 ```
 
@@ -174,7 +176,11 @@ IndexedDB / ecolink / images # { preview, thumb } jpeg Blob
 | `ingredients` | `id, groupId, code, name, remark, hasImage, imageRev` | `code` 为 CODE（同一仓库内不重复），`name` 为中文名，`remark` 为备注。旧数据没有这两项时按空字符串读。`imageRev` 用于刷新图片缓存 |
 | `buyers` | `id, name, sort` | 订货商只要一个名字 |
 | `orders` | `id, date, buyerId, items[], updatedAt` | `date` 为 `YYYY-MM-DD`。`items` 为 `{ ingredientId, quantity }` |
+| `templates` | `id, buyerId, kind, name, items[], updatedAt` | 订货商订单模板。`kind` 为 `fixed`（固定订单，保存数量）或 `common`（常用订单，只存食材清单，`quantity` 为 0） |
 | `settings.locale` | `zh` 或 `en` | 界面语言，也写在文件里 |
+| `settings.fontFamily` | 字体名 | 导出 Excel 用的字体，默认 `微软雅黑` |
+
+旧 `db.json` 没有 `templates` 和 `settings.fontFamily` 时，读取会自动补 `[]` 和 `微软雅黑`，不用手工改文件。
 
 ### 备份文件结构
 
@@ -229,6 +235,7 @@ IndexedDB / ecolink / images # { preview, thumb } jpeg Blob
 - [`src/storage/index.ts`](src/storage/index.ts)
 - [`src/storage/idb.ts`](src/storage/idb.ts)
 - [`src/storage/defaultDb.ts`](src/storage/defaultDb.ts)
+- [`src/storage/normalizeDb.ts`](src/storage/normalizeDb.ts)
 - [`src/api/db.ts`](src/api/db.ts)
 - [`src/api/httpDb.ts`](src/api/httpDb.ts)
 - [`src/types.ts`](src/types.ts)
@@ -244,9 +251,9 @@ IndexedDB / ecolink / images # { preview, thumb } jpeg Blob
 | --- | --- | --- | --- |
 | `/` | 食材 | [`src/pages/IngredientsPage.tsx`](src/pages/IngredientsPage.tsx) | 按分组看食材；新增/改/删（图片、CODE、中文必填，备注可选）；管理分组 |
 | `/buyers` | 订货商 | [`src/pages/BuyersPage.tsx`](src/pages/BuyersPage.tsx) | 增删改订货商名字 |
-| `/orders` | 订单 | [`src/pages/OrdersPage.tsx`](src/pages/OrdersPage.tsx) | 选日期、选订货商；按名称搜索、按分组筛选、可只看上次订过的食材；顶部展示该订货商更早一单并支持填入上次数量；保存覆盖当天订单 |
-| `/summary` | 汇总 | [`src/pages/SummaryPage.tsx`](src/pages/SummaryPage.tsx) | 单日或日期范围矩阵；导出 xlsx。窄屏改成卡片，宽屏仍是表格 |
-| `/data` | 数据 | [`src/pages/DataPage.tsx`](src/pages/DataPage.tsx) | 导出 / 导入整份备份 |
+| `/orders` | 订单 | [`src/pages/OrdersPage.tsx`](src/pages/OrdersPage.tsx) | 选日期、选订货商；搜索框可一键清空；按分组筛选、可只看上次订过的食材；顶部展示该订货商更早一单并支持填入上次数量；订单模板（固定/常用）可一键载入；保存覆盖当天订单，底部浮层提示 |
+| `/summary` | 汇总 | [`src/pages/SummaryPage.tsx`](src/pages/SummaryPage.tsx) | 单日或日期范围矩阵；可选「全部订货商」或某一家；另有独立的「单个订货商汇总」导出区（自选订货商 + 起止日期）；导出 A4 采购汇总或拣货单。窄屏改成卡片，宽屏仍是表格 |
+| `/data` | 数据 | [`src/pages/DataPage.tsx`](src/pages/DataPage.tsx) | 导出 / 导入整份备份；选择导出 Excel 的字体 |
 
 壳子：[`src/components/AppShell.tsx`](src/components/AppShell.tsx)
 
@@ -269,19 +276,37 @@ IndexedDB / ecolink / images # { preview, thumb } jpeg Blob
 
 Excel（[`src/utils/exportSummary.ts`](src/utils/exportSummary.ts)）列顺序：
 
-1. 图片（约 36×36 缩略图）
-2. CODE
-3. 中文
-4. 备注
-5. 各订货商
-6. 合计
+1. CODE
+2. 名字（`nameEn`）
+3. 中文（`name`）
+4. 各订货商
+5. 合计
 
-分组行合并整行，只写组名、不加图。文件名：
+> 注意：**Excel 有意不导出图片和备注**（网页汇总仍显示缩略图 + 备注）。这是需求决定的不一致，别当成 bug 去「修」。
+
+导出前有 3 行：第 1 行标题、第 2 行统计区间 + 导出时间、第 3 行表头。分组行合并整行，只写组名。页边距、A4（横向，缩放一页宽）、每页重复表头、页脚页码由 [`src/utils/excelStyle.ts`](src/utils/excelStyle.ts) 统一设置。字体取 `settings.fontFamily`；「名字」列居左，其余居中。
+
+文件名：
 
 - 中文：`采购汇总-2026-09-21.xlsx` 或 `采购汇总-2026-09-01_2026-09-21.xlsx`
+- 单个订货商：`采购汇总-店名-2026-09-01_2026-09-21.xlsx`
 - 英文：`procurement-summary-...xlsx`
 
-改汇总规则时，网页矩阵和 Excel 必须一起改，数字和出现的行/列要一致。
+单个订货商有两个入口，效果一样：
+
+1. 上面的「订货商」下拉选一家再点导出。
+2. 汇总页独立的「单个订货商汇总」区：自选订货商 + 开始/结束日期，单独导出（该家在所选区间没有订单时按钮不可用）。
+
+### 拣货单
+
+[`src/utils/exportPickingList.ts`](src/utils/exportPickingList.ts)。同样选日期范围（可加订货商筛选，默认全部合并）。按分组逐行：
+
+- 一行分组标题（合并整行）
+- 该组每样食材一行：中文、CODE、名字、数量、备注
+
+数量为所选范围内订货商的合计（选定某一家时就是这一家的数量）。A4 纵向。文件名 `拣货单-2026-09-01_2026-09-21.xlsx`（英文 `picking-list-...`）。
+
+改汇总规则时，网页矩阵和 Excel 必须一起改，数字和出现的行/列要一致（图片/备注是有意只差在 Excel 上）。
 
 ## 7. 国际化
 
@@ -297,8 +322,11 @@ Excel（[`src/utils/exportSummary.ts`](src/utils/exportSummary.ts)）列顺序�
 - 新增食材：必须有图片、CODE、中文；备注可选。CODE 不能和已有食材重复。旧数据缺 CODE/备注时按空显示，再编辑时补上。
 - 上传图片：相册/文件选择，浏览器里压成 preview + thumb，再写入 `data/images/`。手机可选拍照或相册。
 - 同一天同一订货商再打开订单页，要带回当天已保存数量。
-- 订单页可按名称搜索、按分组筛选，也可只看该订货商上次订过的食材。
+- 订单页搜索框右侧有「×」清空按钮；可按分组筛选，也可只看该订货商上次订过的食材。
+- 订单模板：`固定订单` 存数量，点一下只填入还没有数量的项（不覆盖已填/已保存的数字）；`常用订单` 只存食材清单，载入后把列表筛成这些食材。模板存在 `templates` 里，按订货商区分。
 - 若该订货商在所选日期之前有订单，顶部显示「上次订购」及数量，可单项或一键填入。不自动覆盖当天已填数字（点填入才会写入）。
+- 保存（食材 / 订货商 / 分组 / 订单 / 模板 / 字体）成功后，屏幕底部弹出浮层提示并自动消失。
+- 「数据」页可选导出 Excel 的字体（默认微软雅黑）。字体只是指定字体名，电脑没装时会回退，无法内嵌。
 - 切语言立刻换界面，不整页刷新；食材名保持原样。
 - 刷新页面或重启 `npm run dev` 后，电脑文件模式的 `data/` 还在；设备模式刷新后 IndexedDB 还在。
 - 「数据」页导出的备份含图片；导入前要确认，导入后当前数据被整份替换。电脑和手机可互导。
@@ -310,9 +338,9 @@ Excel（[`src/utils/exportSummary.ts`](src/utils/exportSummary.ts)）列顺序�
 按下面顺序做，避免页面、文件、文档各写各的：
 
 1. 先改本文对应章节（需求、字段、页面、规则）。
-2. 若动数据结构：改 `src/types.ts` → `server/fileApi.ts` 初始数据 → store → 各页面。旧的 `data/db.json` 如不兼容，要写迁移或说明如何手工改文件。
+2. 若动数据结构：改 `src/types.ts` → `src/storage/defaultDb.ts` → `src/storage/normalizeDb.ts`（旧数据补默认值）→ store → 各页面。旧的 `data/db.json` 如不兼容，要在 `normalizeDb` 里补，或说明如何手工改文件。
 3. 若动文案：同时改 `zh.ts` 和 `en.ts`。
-4. 若动汇总：同时改 `buildSummary`、汇总页、`exportSummary.ts`。
+4. 若动汇总：同时改 `buildSummary`、汇总页、`exportSummary.ts`（拣货单还要改 `exportPickingList.ts`；A4/字体/对齐改 `excelStyle.ts`）。
 5. 若动存盘：同时改 API / IndexedDB 适配和本文第 3 节。电脑文件模式不要改回用 localStorage；设备模式只用 IndexedDB `ecolink`。
 6. 改完后用浏览器走一遍：加食材（含图）→ 加订货商 → 录两家订单 → 看汇总数字 → 导出 Excel → 导出备份再导入核对 → 切英文。电脑文件模式打开 `data/db.json` 和 `data/images/` 核对。再 `npm run static` 确认没有 `/api/db` 时仍能保存（IndexedDB），刷新还在。窄屏还要看底部 5 个 Tab、汇总卡片、弹出层不被键盘挡住。
 

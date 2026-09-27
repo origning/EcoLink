@@ -48,10 +48,11 @@ export function AppShell() {
 
       {notice && (
         <div
-          className={`mx-4 mt-3 rounded-2xl px-3 py-2 text-sm ${
+          role="status"
+          className={`pointer-events-none fixed inset-x-0 bottom-[calc(5.2rem+env(safe-area-inset-bottom))] z-50 mx-auto w-fit max-w-[calc(100%-2rem)] rounded-2xl px-4 py-2 text-center text-sm shadow-lg ring-1 ring-black/5 ${
             notice.type === "ok"
-              ? "bg-[var(--brand-soft)] text-[var(--brand)]"
-              : "bg-red-50 text-[var(--danger)]"
+              ? "bg-[var(--brand)] text-white"
+              : "bg-red-600 text-white"
           }`}
         >
           {notice.message}
