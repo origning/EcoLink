@@ -16,16 +16,19 @@ H5 网站，给采购人员用：
 7. 客户常用订单（常点清单）/ 固定订单（带数量）模板，方便重复录入
 8. 导出 / 导入整份业务备份（含图片）
 9. 界面中 / 英切换
-10. 电脑、Mac、手机都能各自单独使用（数据默认不互通，可用备份互导）
+10. 账号密码登录；所有用户访问同一台云服务器，**共享同一份数据**
 
 食材名、客户名、自定义分组名不随语言翻译。只有界面文案和三个预置分组名会切换。
 
 ## 2. 怎么运行
 
-可以在 **Windows 10/11**、**macOS** 和手机浏览器 / 手机安装包上使用。每台设备自己存一份数据，互相同步不是必须的。要对齐时用「数据」页导入导出。
+线上是**云服务器共享版**：所有用户用浏览器 / 手机打开同一个地址，登录后看到同一份数据。
 
-**给其他电脑用：打安装包，对方不用装 Node.js。**  
-开发或改代码：仍可用下面的源码启动脚本。
+- 线上地址：<https://ecolinkbuy.top/>
+- 服务器部署、更新、备份、恢复：见 [`deploy/README.md`](deploy/README.md)
+- 本地开发：`npm install` 后 `npm run dev`（本地文件模式，不启用登录）
+
+也可以在 **Windows / macOS** 上打安装包离线单机使用（数据在各自电脑），流程见 [`打包说明.md`](打包说明.md)。
 
 ### 2.0 打包给其他电脑安装（推荐）
 
@@ -130,14 +133,16 @@ npm run cap:ios       # 打开 Xcode 打 IPA（需苹果账号才能装到真机
 
 ## 3. 数据存在哪里
 
-两套存盘，启动时自动选：
+**线上（云服务器）是「文件模式 + 登录」**：数据存在服务器的 `data/` 目录，所有登录用户共享。
+启动时自动判断：
 
-1. **电脑文件模式**（有 `/api/db`）：`npm start`、Vite 预览、Electron 安装包。写 `data/`，不用浏览器仓库。
-2. **设备模式**（没有 `/api/db`）：静态 `dist/`、手机独立打开、Capacitor App。写该设备的 IndexedDB（库名 `ecolink`），图片也在里面。
+1. **文件模式**（探测到 `/api/db` 返回 JSON）：云服务器、`npm start`、Vite 预览、Electron 安装包。写 `data/`。云端同时开启**账号密码登录**（环境变量 `ECOLINK_AUTH=1`）。
+2. **设备模式**（探测不到 `/api/db`）：静态 `dist/`、GitHub Pages、手机独立打开、Capacitor App。写该设备的 IndexedDB（库名 `ecolink`），图片也在里面，**数据不共享**。
 
 ```
-电脑文件模式：
-data/db.json                 # 分组、食材元数据、客户、订单、语言
+文件模式（云服务器 / 本地）：
+data/db.json                 # 分组、食材元数据、客户、订单、模板、settings
+data/auth.json               # 账号（username / scrypt 密码哈希 / role）与会话签名密钥
 data/images/{id}.jpg         # 食材预览图（约最长边 800px）
 data/images/{id}.thumb.jpg   # 缩略图（96×96）
 
@@ -147,6 +152,12 @@ IndexedDB / ecolink / images # { preview, thumb } jpeg Blob
 ```
 
 前端探测：`GET /api/db` 且 `Content-Type` 含 `json` → 文件模式，否则设备模式。逻辑在 [`src/storage/index.ts`](src/storage/index.ts)。
+
+**多人共享为什么不互相覆盖**：业务数据走「按实体接口」，分组 / 食材 / 客户 / 订单 / 模板各自增删改，
+服务端每次只改动单条记录再原子落盘（[`server/store.ts`](server/store.ts)），不是整份覆盖。
+订单在服务端按「日期 + 客户」去重，保证同一天同一客户只有一份订单。
+
+备份：`data/` 全部内容（含 `auth.json`）。线上由 [`deploy/backup.sh`](deploy/backup.sh) 每天自动打包，保留 30 天，见 `deploy/README.md` 第 9 节。
 
 首次启动若没有数据，会写入带 3 个预置分组的初始库（[`src/storage/defaultDb.ts`](src/storage/defaultDb.ts)）。
 
@@ -210,14 +221,26 @@ IndexedDB / ecolink / images # { preview, thumb } jpeg Blob
 - 分组下还有食材时不能删分组。
 - 食材 / 客户被订单引用时，删除要确认。历史订单保留 id；汇总里找不到名字则显示「已删除」。
 
-## 4. 本机 API
+## 4. 接口
 
-由 [`server/fileApi.ts`](server/fileApi.ts) 挂到 Vite 开发/预览服务。
+由 [`server/store.ts`](server/store.ts) 实现。开发时挂在 [`server/fileApi.ts`](server/fileApi.ts)；
+云端由 [`server/standalone.ts`](server/standalone.ts) + [`deploy/entry.ts`](deploy/entry.ts) 启动。
 
 | 方法 | 路径 | 作用 |
 | --- | --- | --- |
-| GET | `/api/db` | 读整份 json |
-| PUT | `/api/db` | 覆盖写入整份 json（先写临时文件再 rename） |
+| GET | `/api/auth/me` | 当前登录状态（`authEnabled` + `user`） |
+| POST | `/api/auth/login` | 登录，成功发 httpOnly 会话 Cookie |
+| POST | `/api/auth/logout` | 退出 |
+| POST | `/api/auth/password` | 修改自己的密码 |
+| GET | `/api/users` | 用户列表（仅管理员） |
+| POST | `/api/users` | 新增用户（仅管理员） |
+| DELETE | `/api/users/:id` | 删除用户（仅管理员） |
+| PATCH | `/api/users/:id` | 改角色 / 重置密码（仅管理员） |
+| GET | `/api/db` | 读整份 json（需登录） |
+| PUT | `/api/db` | 覆盖写入整份 json（备份等场景保留） |
+| POST | `/api/{groups\|ingredients\|buyers\|orders\|templates}` | 新增或更新一条记录，返回最新整份数据 |
+| DELETE | `/api/{groups\|ingredients\|buyers\|orders\|templates}/:id` | 删除一条记录 |
+| PATCH | `/api/settings` | 改语言 / 导出字体 / 导出字号 |
 | GET | `/api/backup` | 导出备份：`db` + 图片 base64 |
 | PUT | `/api/backup` | 导入备份并覆盖当前数据与图片 |
 | PUT | `/api/images/:id` | body: `{ preview, thumb }`，均为 jpeg 的 base64 |
@@ -225,27 +248,38 @@ IndexedDB / ecolink / images # { preview, thumb } jpeg Blob
 | GET | `/api/images/:id/thumb` | 缩略图 |
 | DELETE | `/api/images/:id` | 删预览图和缩略图 |
 
-前端每次业务变更后提交完整 `db.json` 快照。电脑文件模式如此。设备模式把同一份结构写入 IndexedDB。这是单人单设备工具，不做多人并发合并。
+开启登录（`ECOLINK_AUTH=1`）后，除 `/api/auth/*` 外的接口都要求已登录，否则返回 401。
+密码用 Node 内置 `scrypt` 哈希，会话是 HMAC 签名令牌放 httpOnly + Secure Cookie，逻辑在 [`server/authStore.ts`](server/authStore.ts)。
+云端命令：`node server.cjs create-admin <账号> <密码>` / `reset-password`。
+
+前端业务变更走「按实体接口」，服务端返回最新整份数据刷新本地；不是整份覆盖。
+设备模式把同一份结构写入 IndexedDB。
 
 改存储规则时，要同时改：
 
 - [`server/store.ts`](server/store.ts)
+- [`server/authStore.ts`](server/authStore.ts)
 - [`server/fileApi.ts`](server/fileApi.ts)
 - [`server/standalone.ts`](server/standalone.ts)
+- [`deploy/entry.ts`](deploy/entry.ts)
 - [`src/storage/index.ts`](src/storage/index.ts)
 - [`src/storage/idb.ts`](src/storage/idb.ts)
 - [`src/storage/defaultDb.ts`](src/storage/defaultDb.ts)
 - [`src/storage/normalizeDb.ts`](src/storage/normalizeDb.ts)
 - [`src/api/db.ts`](src/api/db.ts)
 - [`src/api/httpDb.ts`](src/api/httpDb.ts)
+- [`src/api/auth.ts`](src/api/auth.ts)
 - [`src/types.ts`](src/types.ts)
 - [`src/store/useAppStore.ts`](src/store/useAppStore.ts)
+- [`src/store/useAuthStore.ts`](src/store/useAuthStore.ts)
 - [`src/pages/DataPage.tsx`](src/pages/DataPage.tsx)
+- [`src/pages/LoginPage.tsx`](src/pages/LoginPage.tsx)
 - 本文第 3、4 节
 
 ## 5. 页面
 
-底部 5 个 Tab，顶栏右侧切中文 / EN。
+云端开启登录时，先出现**登录页**（[`src/pages/LoginPage.tsx`](src/pages/LoginPage.tsx)）；登录后进主界面。
+底部 5 个 Tab，顶栏右侧切中文 / EN，另有退出按钮。
 
 | 路由 | 页面 | 文件 | 做什么 |
 | --- | --- | --- | --- |
@@ -253,7 +287,7 @@ IndexedDB / ecolink / images # { preview, thumb } jpeg Blob
 | `/buyers` | 客户 | [`src/pages/BuyersPage.tsx`](src/pages/BuyersPage.tsx) | 增删改客户名字 |
 | `/orders` | 订单 | [`src/pages/OrdersPage.tsx`](src/pages/OrdersPage.tsx) | 选日期、选客户；搜索框可一键清空；按分组筛选、可只看上次订过的食材；顶部展示该客户更早一单并支持填入上次数量；订单模板（固定/常用）可一键载入；保存覆盖当天订单，底部浮层提示 |
 | `/summary` | 汇总 | [`src/pages/SummaryPage.tsx`](src/pages/SummaryPage.tsx) | 单日或日期范围矩阵；可选「全部客户」或某一家；另有独立的「单个客户汇总」导出区（自选客户 + 起止日期）；导出 A4 采购汇总或拣货单。窄屏改成卡片，宽屏仍是表格 |
-| `/data` | 数据 | [`src/pages/DataPage.tsx`](src/pages/DataPage.tsx) | 导出 / 导入整份备份；选择导出 Excel 的字体 |
+| `/data` | 数据 | [`src/pages/DataPage.tsx`](src/pages/DataPage.tsx) | 导出 / 导入整份备份；设置导出字体和字号；账号信息、修改密码、管理员用户管理 |
 
 壳子：[`src/components/AppShell.tsx`](src/components/AppShell.tsx)
 
@@ -341,15 +375,15 @@ Excel（[`src/utils/exportSummary.ts`](src/utils/exportSummary.ts)）列顺序�
 2. 若动数据结构：改 `src/types.ts` → `src/storage/defaultDb.ts` → `src/storage/normalizeDb.ts`（旧数据补默认值）→ store → 各页面。旧的 `data/db.json` 如不兼容，要在 `normalizeDb` 里补，或说明如何手工改文件。
 3. 若动文案：同时改 `zh.ts` 和 `en.ts`。
 4. 若动汇总：同时改 `buildSummary`、汇总页、`exportSummary.ts`（拣货单还要改 `exportPickingList.ts`；A4/字体/对齐改 `excelStyle.ts`）。
-5. 若动存盘：同时改 API / IndexedDB 适配和本文第 3 节。电脑文件模式不要改回用 localStorage；设备模式只用 IndexedDB `ecolink`。
+5. 若动存盘：同时改实体接口 / IndexedDB 适配和本文第 3、4 节。文件模式不要改回用 localStorage；设备模式只用 IndexedDB `ecolink`。多人共享靠「按实体接口」，不要再改回整份覆盖。
 6. 改完后用浏览器走一遍：加食材（含图）→ 加客户 → 录两家订单 → 看汇总数字 → 导出 Excel → 导出备份再导入核对 → 切英文。电脑文件模式打开 `data/db.json` 和 `data/images/` 核对。再 `npm run static` 确认没有 `/api/db` 时仍能保存（IndexedDB），刷新还在。窄屏还要看底部 5 个 Tab、汇总卡片、弹出层不被键盘挡住。
 
 ## 10. 明确不做
 
-- 账号、权限、云同步、数据库
 - 单位、单价、金额、库存
 - 食材英文名、一张食材多图
 - 独立拍照按钮、用图片 URL 当主数据
 - PDF / CSV
 - 电脑文件模式把业务数据存进浏览器
-- 多设备自动合并同一份订单
+- 订单的字段级自动合并（冲突以「日期 + 客户」整单覆盖为准）
+- 社交登录 / 短信验证码 / 邮件找回密码（忘记密码由管理员重置）
