@@ -1,5 +1,37 @@
 export const en = {
   appName: "EcoLink",
+  auth: {
+    loginTitle: "Sign in to EcoLink",
+    loginHint: "Use the account your administrator gave you",
+    username: "Username",
+    password: "Password",
+    login: "Sign in",
+    loggingIn: "Signing in…",
+    logout: "Sign out",
+    signedInAs: "Signed in as {{name}}",
+    role: "Role",
+    roleAdmin: "Admin",
+    roleEditor: "Editor",
+    needUsername: "Enter your username",
+    needPassword: "Enter your password",
+    badCredentials: "Wrong username or password",
+    changePassword: "Change password",
+    currentPassword: "Current password",
+    newPassword: "New password",
+    passwordRule: "At least 6 characters",
+    passwordTooShort: "Password must be at least 6 characters",
+    usernameTaken: "That username already exists",
+    lastAdmin: "At least one admin must remain",
+    cannotDeleteSelf: "You cannot delete the signed-in account",
+    badCurrentPassword: "Current password is incorrect",
+    passwordChanged: "Password changed",
+    users: "Users",
+    userCount: "{{count}} users",
+    addUser: "Add user",
+    resetPassword: "Reset password",
+    resetPasswordPrompt: "Set a new password for \"{{name}}\" (at least 6 characters)",
+    deleteUserConfirm: "Delete user \"{{name}}\"?",
+  },
   nav: {
     ingredients: "Items",
     buyers: "Customers",
@@ -138,6 +170,10 @@ export const en = {
     exportSingleBuyer: "Export customer summary",
     noBuyerData: "This customer has no orders in this range",
     empty: "No orders in this range",
+    previewHint:
+      "Drag the dots (or use ↑ ↓) to reorder groups and items, then export.",
+    moveUp: "Move up",
+    moveDown: "Move down",
   },
   picking: {
     title: "Picking list",
@@ -163,6 +199,8 @@ export const en = {
       "While the site is running on a computer, a phone on the same Wi-Fi can open the address shown in the terminal. That shares the computer’s data.",
     storageFiles:
       "This data is stored as files on this computer. Closing the site or switching to a phone does not copy it automatically.",
+    storageCloud:
+      "Data is stored on the cloud server and shared by all signed-in users. Sign in on any device to see the same data.",
     storageDevice:
       "This data stays on this device. It does not sync with a computer or another phone. Export a backup before switching devices.",
     addToHome:
@@ -170,5 +208,7 @@ export const en = {
     exportSettings: "Export settings",
     fontFamily: "Export font",
     fontHint: "Falls back to a system font if it is missing; Microsoft YaHei works best on Windows.",
+    fontSize: "Export font size",
+    fontSizeHint: "Used by the procurement summary, single-customer summary, and picking list.",
   },
 };

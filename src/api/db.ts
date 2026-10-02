@@ -1,5 +1,6 @@
 export {
   deleteIngredientImages,
+  deleteRecord,
   fetchBackup,
   fetchDb,
   getStorageKind,
@@ -9,5 +10,11 @@ export {
   putBackup,
   putDb,
   putIngredientImages,
+  saveBuyer,
+  saveGroup,
+  saveIngredient,
+  saveOrder,
+  saveSettings,
+  saveTemplate,
 } from "../storage";
 export type { StorageKind } from "../storage";

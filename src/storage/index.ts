@@ -1,4 +1,13 @@
-import type { AppDb, BackupFile } from "../types";
+import type {
+  AppDb,
+  AppSettings,
+  BackupFile,
+  Buyer,
+  Group,
+  Ingredient,
+  Order,
+  OrderTemplate,
+} from "../types";
 import * as httpDb from "../api/httpDb";
 import { normalizeDb } from "./normalizeDb";
 import {
@@ -13,6 +22,8 @@ import {
 } from "./idb";
 
 export type StorageKind = "files" | "device";
+
+type CollectionKey = "groups" | "ingredients" | "buyers" | "orders" | "templates";
 
 let kind: StorageKind | null = null;
 let initPromise: Promise<StorageKind> | null = null;
@@ -51,6 +62,75 @@ export async function fetchDb() {
 export async function putDb(db: AppDb) {
   await initStorage();
   return kind === "files" ? httpDb.putDb(db) : idbPutDb(db);
+}
+
+// ---- 按实体增删改 ----
+// 文件模式：调用服务端按实体接口，服务端只改动这一条，避免整份覆盖。
+// 设备模式：本来就是单设备本地数据，直接在 IndexedDB 上增删改。
+
+function upsertList<T extends { id: string }>(list: T[], entity: T): T[] {
+  const index = list.findIndex((item) => item.id === entity.id);
+  if (index === -1) return [...list, entity];
+  return list.map((item) => (item.id === entity.id ? entity : item));
+}
+
+async function mutateLocal(key: CollectionKey, entity: { id: string }) {
+  const db = await idbFetchDb();
+  (db as unknown as Record<string, unknown>)[key] = upsertList(
+    db[key] as unknown as { id: string }[],
+    entity,
+  );
+  return idbPutDb(db);
+}
+
+async function removeLocal(key: CollectionKey, id: string) {
+  const db = await idbFetchDb();
+  (db as unknown as Record<string, unknown>)[key] = (
+    db[key] as unknown as { id: string }[]
+  ).filter((item) => item.id !== id);
+  return idbPutDb(db);
+}
+
+export async function saveSettings(patch: Partial<AppSettings>) {
+  await initStorage();
+  if (kind === "files") return httpDb.saveSettings(patch);
+  const db = await idbFetchDb();
+  db.settings = { ...db.settings, ...patch };
+  return idbPutDb(db);
+}
+
+export async function saveGroup(group: Group) {
+  await initStorage();
+  return kind === "files" ? httpDb.saveGroup(group) : mutateLocal("groups", group);
+}
+
+export async function saveIngredient(ingredient: Ingredient) {
+  await initStorage();
+  return kind === "files"
+    ? httpDb.saveIngredient(ingredient)
+    : mutateLocal("ingredients", ingredient);
+}
+
+export async function saveBuyer(buyer: Buyer) {
+  await initStorage();
+  return kind === "files" ? httpDb.saveBuyer(buyer) : mutateLocal("buyers", buyer);
+}
+
+export async function saveOrder(order: Order) {
+  await initStorage();
+  return kind === "files" ? httpDb.saveOrder(order) : mutateLocal("orders", order);
+}
+
+export async function saveTemplate(template: OrderTemplate) {
+  await initStorage();
+  return kind === "files"
+    ? httpDb.saveTemplate(template)
+    : mutateLocal("templates", template);
+}
+
+export async function deleteRecord(key: CollectionKey, id: string) {
+  await initStorage();
+  return kind === "files" ? httpDb.deleteRecord(key, id) : removeLocal(key, id);
 }
 
 export function ingredientThumbUrl(id: string, rev = 0) {

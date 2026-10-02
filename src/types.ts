@@ -1,5 +1,14 @@
 export type Locale = "zh" | "en";
 
+export type UserRole = "admin" | "editor";
+
+/** 已登录用户（不含密码哈希） */
+export type AuthUser = {
+  id: string;
+  username: string;
+  role: UserRole;
+};
+
 export type GroupI18nKey = "fresh" | "frozen" | "packaged";
 
 export type Group = {
@@ -57,6 +66,8 @@ export type AppSettings = {
   locale: Locale;
   /** 导出 Excel 使用的字体名 */
   fontFamily: string;
+  /** 导出 Excel 使用的字号 */
+  fontSize: number;
 };
 
 export type AppDb = {

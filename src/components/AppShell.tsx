@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAppStore } from "../store/useAppStore";
+import { useAuthStore } from "../store/useAuthStore";
 
 const tabs = [
   { to: "/", key: "nav.ingredients", icon: BasketIcon },
@@ -17,6 +18,9 @@ export function AppShell() {
   const setLocale = useAppStore((s) => s.setLocale);
   const notice = useAppStore((s) => s.notice);
   const loaded = useAppStore((s) => s.loaded);
+  const authEnabled = useAuthStore((s) => s.authEnabled);
+  const user = useAuthStore((s) => s.user);
+  const signOut = useAuthStore((s) => s.signOut);
 
   useEffect(() => {
     if (i18n.language !== locale) {
@@ -30,19 +34,32 @@ export function AppShell() {
         <h1 className="truncate text-base font-semibold leading-tight sm:text-lg">
           {t("appName")}
         </h1>
-        <div className="flex rounded-full bg-white p-1 shadow-sm ring-1 ring-[var(--line)]">
-          <LangButton
-            active={locale === "zh"}
-            onClick={() => void setLocale("zh")}
-          >
-            中文
-          </LangButton>
-          <LangButton
-            active={locale === "en"}
-            onClick={() => void setLocale("en")}
-          >
-            EN
-          </LangButton>
+        <div className="flex items-center gap-2">
+          {authEnabled && user ? (
+            <button
+              type="button"
+              onClick={() => void signOut()}
+              title={`${user.username} · ${t("auth.logout")}`}
+              aria-label={t("auth.logout")}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-[var(--muted)] shadow-sm ring-1 ring-[var(--line)]"
+            >
+              <LogoutIcon />
+            </button>
+          ) : null}
+          <div className="flex rounded-full bg-white p-1 shadow-sm ring-1 ring-[var(--line)]">
+            <LangButton
+              active={locale === "zh"}
+              onClick={() => void setLocale("zh")}
+            >
+              中文
+            </LangButton>
+            <LangButton
+              active={locale === "en"}
+              onClick={() => void setLocale("en")}
+            >
+              EN
+            </LangButton>
+          </div>
         </div>
       </header>
 
@@ -111,6 +128,26 @@ function LangButton({
     >
       {children}
     </button>
+  );
+}
+
+function LogoutIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M15 12H4m0 0 3.5-3.5M4 12l3.5 3.5"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M11 5h6a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-6"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+    </svg>
   );
 }
 

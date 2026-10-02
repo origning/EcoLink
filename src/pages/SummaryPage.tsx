@@ -1,16 +1,8 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ingredientThumbUrl } from "../api/db";
-import {
-  Card,
-  EmptyState,
-  Field,
-  GhostButton,
-  PageTitle,
-  PrimaryButton,
-  TextInput,
-  Thumb,
-} from "../components/ui";
+import { Card, EmptyState, Field, GhostButton, PageTitle, PrimaryButton, TextInput, Thumb } from "../components/ui";
+import { ExportPreviewSheet } from "../components/ExportPreviewSheet";
 import { buildSummary, useAppStore } from "../store/useAppStore";
 import { exportSummary } from "../utils/exportSummary";
 import { exportPickingList } from "../utils/exportPickingList";
@@ -25,16 +17,15 @@ export function SummaryPage() {
   const flash = useAppStore((s) => s.flash);
   const locale = useAppStore((s) => s.settings.locale);
   const fontFamily = useAppStore((s) => s.settings.fontFamily);
+  const fontSize = useAppStore((s) => s.settings.fontSize);
   const [mode, setMode] = useState<"single" | "range">("single");
   const [from, setFrom] = useState(todayIso());
   const [to, setTo] = useState(todayIso());
   const [exportBuyer, setExportBuyer] = useState("all");
-  const [exporting, setExporting] = useState(false);
-  const [exportingPicking, setExportingPicking] = useState(false);
+  const [preview, setPreview] = useState<null | "summary" | "picking" | "single">(null);
   const [singleBuyerId, setSingleBuyerId] = useState(buyers[0]?.id ?? "");
   const [singleFrom, setSingleFrom] = useState(todayIso());
   const [singleTo, setSingleTo] = useState(todayIso());
-  const [exportingSingle, setExportingSingle] = useState(false);
 
   const rangeFrom = mode === "single" ? from : from;
   const rangeTo = mode === "single" ? from : to;
@@ -94,49 +85,38 @@ export function SummaryPage() {
     groupName,
     deleted: t("common.deletedItem"),
     fontFamily,
+    fontSize,
   };
 
-  const handleExportSummary = () => {
-    setExporting(true);
-    void exportSummary(matrix, summaryLabels, { buyerId })
-      .then(() => flash({ type: "ok", message: t("summary.exported") }))
-      .catch((error) => flash({ type: "error", message: String(error) }))
-      .finally(() => setExporting(false));
+  const pickingLabels = {
+    sheet: locale === "zh" ? "拣货单" : "Picking list",
+    title: t("picking.title"),
+    rangeLabel: t("summary.rangeLabel"),
+    exportedAtLabel: t("summary.exportedAtLabel"),
+    item: t("summary.item"),
+    code: t("summary.code"),
+    nameEn: t("summary.nameEn"),
+    quantity: t("orders.quantity"),
+    remark: t("summary.remark"),
+    groupName,
+    fontFamily,
+    fontSize,
   };
 
-  const handleExportSingleBuyer = () => {
-    if (!selectedSingleBuyerId) return;
-    setExportingSingle(true);
-    void exportSummary(singleMatrix, summaryLabels, {
-      buyerId: selectedSingleBuyerId,
-    })
-      .then(() => flash({ type: "ok", message: t("summary.exported") }))
-      .catch((error) => flash({ type: "error", message: String(error) }))
-      .finally(() => setExportingSingle(false));
-  };
-
-  const handleExportPicking = () => {
-    setExportingPicking(true);
-    void exportPickingList(
-      matrix,
-      {
-        sheet: locale === "zh" ? "拣货单" : "Picking list",
-        title: t("picking.title"),
-        rangeLabel: t("summary.rangeLabel"),
-        exportedAtLabel: t("summary.exportedAtLabel"),
-        item: t("summary.item"),
-        code: t("summary.code"),
-        nameEn: t("summary.nameEn"),
-        quantity: t("orders.quantity"),
-        remark: t("summary.remark"),
-        groupName,
-        fontFamily,
-      },
-      { buyerId },
-    )
-      .then(() => flash({ type: "ok", message: t("picking.exported") }))
-      .catch((error) => flash({ type: "error", message: String(error) }))
-      .finally(() => setExportingPicking(false));
+  const handlePreviewExport = async (ordered: typeof matrix) => {
+    try {
+      if (preview === "picking") {
+        await exportPickingList(ordered, pickingLabels, { buyerId });
+        flash({ type: "ok", message: t("picking.exported") });
+        return;
+      }
+      await exportSummary(ordered, summaryLabels, {
+        buyerId: preview === "single" ? selectedSingleBuyerId : buyerId,
+      });
+      flash({ type: "ok", message: t("summary.exported") });
+    } catch (error) {
+      flash({ type: "error", message: String(error) });
+    }
   };
 
   return (
@@ -145,17 +125,11 @@ export function SummaryPage() {
         title={t("summary.title")}
         action={
           <div className="flex flex-wrap justify-end gap-1">
-            <GhostButton
-              disabled={exportingPicking || empty}
-              onClick={handleExportPicking}
-            >
-              {exportingPicking ? t("summary.exporting") : t("summary.exportPicking")}
+            <GhostButton disabled={empty} onClick={() => setPreview("picking")}>
+              {t("summary.exportPicking")}
             </GhostButton>
-            <PrimaryButton
-              disabled={exporting || empty}
-              onClick={handleExportSummary}
-            >
-              {exporting ? t("summary.exporting") : t("summary.export")}
+            <PrimaryButton disabled={empty} onClick={() => setPreview("summary")}>
+              {t("summary.export")}
             </PrimaryButton>
           </div>
         }
@@ -251,14 +225,10 @@ export function SummaryPage() {
         )}
         <div className="flex justify-end">
           <PrimaryButton
-            disabled={
-              exportingSingle || !selectedSingleBuyerId || !singleHasData
-            }
-            onClick={handleExportSingleBuyer}
+            disabled={!selectedSingleBuyerId || !singleHasData}
+            onClick={() => setPreview("single")}
           >
-            {exportingSingle
-              ? t("summary.exporting")
-              : t("summary.exportSingleBuyer")}
+            {t("summary.exportSingleBuyer")}
           </PrimaryButton>
         </div>
       </Card>
@@ -366,6 +336,29 @@ export function SummaryPage() {
           </div>
         </>
       )}
+
+      {preview ? (
+        <ExportPreviewSheet
+          matrix={preview === "single" ? singleMatrix : matrix}
+          title={
+            preview === "picking"
+              ? t("picking.title")
+              : preview === "single"
+                ? t("summary.singleBuyerTitle")
+                : t("summary.exportTitle")
+          }
+          confirmLabel={
+            preview === "picking"
+              ? t("summary.exportPicking")
+              : preview === "single"
+                ? t("summary.exportSingleBuyer")
+                : t("summary.export")
+          }
+          groupLabel={groupName}
+          onExport={handlePreviewExport}
+          onClose={() => setPreview(null)}
+        />
+      ) : null}
     </div>
   );
 }

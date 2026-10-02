@@ -1,17 +1,44 @@
 import fs from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
-import type { AppDb, BackupFile } from "../src/types";
+import type { AppDb, BackupFile, Order, UserRole } from "../src/types";
 import { createDefaultDb } from "../src/storage/defaultDb";
 import { normalizeDb } from "../src/storage/normalizeDb";
+import type { AuthStore } from "./authStore";
+import {
+  SESSION_TTL_MS,
+  clearSessionCookie,
+  getSessionToken,
+  sessionCookie,
+} from "./authStore";
 
 const BACKUP_FORMAT = "ecolink-backup";
 const BACKUP_VERSION = 1;
 const MAX_BACKUP_BYTES = 80 * 1024 * 1024;
 
-export function createFileStore(dataDir: string) {
+export function createFileStore(
+  dataDir: string,
+  options: { auth?: AuthStore | null } = {},
+) {
+  const auth = options.auth ?? null;
   const imagesDir = path.join(dataDir, "images");
   const dbPath = path.join(dataDir, "db.json");
+
+  type CollectionKey = "groups" | "ingredients" | "buyers" | "orders" | "templates";
+
+  function upsertInto(db: AppDb, key: CollectionKey, entity: { id: string }) {
+    const list = db[key] as unknown as { id: string }[];
+    const index = list.findIndex((item) => item.id === entity.id);
+    if (index === -1) list.push(entity);
+    else list[index] = entity;
+  }
+
+  function removeFrom(db: AppDb, key: CollectionKey, id: string) {
+    const list = db[key] as unknown as { id: string }[];
+    (db as unknown as Record<string, unknown>)[key] = list.filter(
+      (item) => item.id !== id,
+    );
+  }
 
   function defaultDb(): AppDb {
     return createDefaultDb();
@@ -58,6 +85,24 @@ export function createFileStore(dataDir: string) {
       req.on("end", () => resolve(Buffer.concat(chunks)));
       req.on("error", reject);
     });
+  }
+
+  async function readJsonBody<T>(req: IncomingMessage): Promise<T> {
+    const text = (await readBody(req)).toString("utf8");
+    if (!text) return {} as T;
+    return JSON.parse(text) as T;
+  }
+
+  function errorMessage(error: unknown) {
+    return error instanceof Error ? error.message : String(error);
+  }
+
+  function isSecureRequest(req: IncomingMessage) {
+    const proto = String(req.headers["x-forwarded-proto"] ?? "")
+      .split(",")[0]
+      .trim();
+    if (proto) return proto === "https";
+    return Boolean((req.socket as { encrypted?: boolean }).encrypted);
   }
 
   function imagePath(id: string, kind: "preview" | "thumb") {
@@ -174,9 +219,239 @@ export function createFileStore(dataDir: string) {
     }
   }
 
+  // 返回 true 表示该请求已由认证相关路由处理。
+  async function handleAuthRoutes(
+    req: IncomingMessage,
+    res: ServerResponse,
+    url: string,
+    method: string,
+  ): Promise<boolean> {
+    if (url === "/api/auth/me" && method === "GET") {
+      sendJson(res, 200, {
+        authEnabled: Boolean(auth),
+        user: auth
+          ? auth.readToken(getSessionToken(req))
+          : { id: "local", username: "local", role: "admin" as UserRole },
+      });
+      return true;
+    }
+
+    if (url === "/api/auth/login" && method === "POST") {
+      if (!auth) {
+        sendJson(res, 400, { error: "auth-disabled" });
+        return true;
+      }
+      const body = await readJsonBody<{ username?: string; password?: string }>(req);
+      const user = auth.verifyCredentials(
+        String(body.username ?? ""),
+        String(body.password ?? ""),
+      );
+      if (!user) {
+        sendJson(res, 401, { error: "bad-credentials" });
+        return true;
+      }
+      res.setHeader(
+        "Set-Cookie",
+        sessionCookie(auth.issueToken(user), SESSION_TTL_MS, isSecureRequest(req)),
+      );
+      sendJson(res, 200, { user });
+      return true;
+    }
+
+    if (url === "/api/auth/logout" && method === "POST") {
+      res.setHeader("Set-Cookie", clearSessionCookie(isSecureRequest(req)));
+      sendJson(res, 200, { ok: true });
+      return true;
+    }
+
+    if (url === "/api/auth/password" && method === "POST") {
+      if (!auth) {
+        sendJson(res, 400, { error: "auth-disabled" });
+        return true;
+      }
+      const me = auth.readToken(getSessionToken(req));
+      if (!me) {
+        sendJson(res, 401, { error: "unauthorized" });
+        return true;
+      }
+      const body = await readJsonBody<{
+        currentPassword?: string;
+        newPassword?: string;
+      }>(req);
+      if (!auth.verifyCredentials(me.username, String(body.currentPassword ?? ""))) {
+        sendJson(res, 400, { error: "bad-current-password" });
+        return true;
+      }
+      try {
+        auth.setPassword(me.id, String(body.newPassword ?? ""));
+        sendJson(res, 200, { ok: true });
+      } catch (error) {
+        sendJson(res, 400, { error: errorMessage(error) });
+      }
+      return true;
+    }
+
+    if (url === "/api/users" || url.startsWith("/api/users/")) {
+      if (!auth) {
+        sendJson(res, 404, { error: "not-found" });
+        return true;
+      }
+      const me = auth.readToken(getSessionToken(req));
+      if (!me) {
+        sendJson(res, 401, { error: "unauthorized" });
+        return true;
+      }
+      if (me.role !== "admin") {
+        sendJson(res, 403, { error: "forbidden" });
+        return true;
+      }
+
+      if (url === "/api/users" && method === "GET") {
+        sendJson(res, 200, { users: auth.listUsers().map(auth.toPublic) });
+        return true;
+      }
+
+      if (url === "/api/users" && method === "POST") {
+        const body = await readJsonBody<{
+          username?: string;
+          password?: string;
+          role?: string;
+        }>(req);
+        try {
+          const user = auth.createUser(
+            String(body.username ?? ""),
+            String(body.password ?? ""),
+            body.role === "admin" ? "admin" : "editor",
+          );
+          sendJson(res, 201, { user });
+        } catch (error) {
+          sendJson(res, 400, { error: errorMessage(error) });
+        }
+        return true;
+      }
+
+      const match = url.match(/^\/api\/users\/([^/]+)$/);
+      if (match) {
+        const id = decodeURIComponent(match[1]);
+        if (method === "DELETE") {
+          if (id === me.id) {
+            sendJson(res, 400, { error: "cannot-delete-self" });
+            return true;
+          }
+          try {
+            auth.deleteUser(id);
+            sendJson(res, 200, { ok: true });
+          } catch (error) {
+            sendJson(res, 400, { error: errorMessage(error) });
+          }
+          return true;
+        }
+        if (method === "PATCH") {
+          const body = await readJsonBody<{ role?: string; password?: string }>(req);
+          try {
+            if (body.role) {
+              auth.setRole(id, body.role === "admin" ? "admin" : "editor");
+            }
+            if (body.password) auth.setPassword(id, String(body.password));
+            sendJson(res, 200, { ok: true });
+          } catch (error) {
+            sendJson(res, 400, { error: errorMessage(error) });
+          }
+          return true;
+        }
+      }
+
+      sendJson(res, 404, { error: "not-found" });
+      return true;
+    }
+
+    return false;
+  }
+
   async function handleApi(req: IncomingMessage, res: ServerResponse) {
     const url = (req.url ?? "").split("?")[0];
     const method = req.method ?? "GET";
+
+    if (await handleAuthRoutes(req, res, url, method)) return;
+
+    // 认证开启时，其余所有接口都要求已登录。
+    if (auth) {
+      const user = auth.readToken(getSessionToken(req));
+      if (!user) {
+        sendJson(res, 401, { error: "unauthorized" });
+        return;
+      }
+    }
+
+    if (url === "/api/settings" && method === "PATCH") {
+      const body = await readJsonBody<{
+        locale?: unknown;
+        fontFamily?: unknown;
+        fontSize?: unknown;
+      }>(req);
+      const db = readDb();
+      if (body.locale === "zh" || body.locale === "en") db.settings.locale = body.locale;
+      if (typeof body.fontFamily === "string" && body.fontFamily) {
+        db.settings.fontFamily = body.fontFamily;
+      }
+      const size = Number(body.fontSize);
+      if (Number.isFinite(size) && size >= 6 && size <= 30) {
+        db.settings.fontSize = Math.round(size);
+      }
+      writeDbAtomic(db);
+      sendJson(res, 200, readDb());
+      return;
+    }
+
+    // 按实体增删改：每次只改动一条记录再落盘，避免整份覆盖把别人的改动冲掉。
+    const entityMatch = url.match(
+      /^\/api\/(groups|ingredients|buyers|orders|templates)(?:\/([^/]+))?$/,
+    );
+    if (entityMatch) {
+      const collection = entityMatch[1] as CollectionKey;
+      const id = entityMatch[2] ? decodeURIComponent(entityMatch[2]) : null;
+
+      if (method === "POST" && !id) {
+        const entity = await readJsonBody<{ id?: unknown }>(req);
+        if (!entity || typeof entity.id !== "string" || !entity.id) {
+          sendJson(res, 400, { error: "missing-id" });
+          return;
+        }
+        const db = readDb();
+        if (collection === "orders") {
+          // 同一天 + 同一客户只保留一份订单（以「日期 + 客户」为准）。
+          const date = (entity as { date?: unknown }).date;
+          const buyerId = (entity as { buyerId?: unknown }).buyerId;
+          db.orders = db.orders.filter(
+            (order) => !(order.date === date && order.buyerId === buyerId),
+          );
+          db.orders.push(entity as unknown as Order);
+        } else {
+          upsertInto(db, collection, entity as unknown as { id: string });
+        }
+        writeDbAtomic(db);
+        sendJson(res, 200, readDb());
+        return;
+      }
+
+      if (method === "DELETE" && id) {
+        const db = readDb();
+        if (
+          collection === "groups" &&
+          db.ingredients.some((item) => item.groupId === id)
+        ) {
+          sendJson(res, 400, { error: "group-in-use" });
+          return;
+        }
+        removeFrom(db, collection, id);
+        writeDbAtomic(db);
+        sendJson(res, 200, readDb());
+        return;
+      }
+
+      sendJson(res, 405, { error: "method-not-allowed" });
+      return;
+    }
 
     if (url === "/api/db" && method === "GET") {
       sendJson(res, 200, readDb());

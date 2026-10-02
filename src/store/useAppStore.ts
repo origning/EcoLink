@@ -1,14 +1,20 @@
 import { create } from "zustand";
 import {
   deleteIngredientImages,
+  deleteRecord,
   fetchDb,
   getStorageKind,
-  putDb,
   putIngredientImages,
+  saveBuyer,
+  saveGroup,
+  saveIngredient,
+  saveOrder,
+  saveSettings,
+  saveTemplate,
 } from "../api/db";
 import i18n from "../i18n";
 import { normalizeIngredient } from "../utils/format";
-import { DEFAULT_FONT_FAMILY } from "../storage/defaultDb";
+import { DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE } from "../storage/defaultDb";
 import type {
   AppDb,
   Buyer,
@@ -30,7 +36,6 @@ type AppState = AppDb & {
   storageKind: StorageKind;
   notice: Notice;
   load: () => Promise<void>;
-  persist: (patch: Partial<AppDb>) => Promise<void>;
   setLocale: (locale: Locale) => Promise<void>;
   addGroup: (name: string) => Promise<void>;
   updateGroup: (id: string, name: string) => Promise<void>;
@@ -62,6 +67,7 @@ type AppState = AppDb & {
   }) => Promise<void>;
   deleteTemplate: (id: string) => Promise<void>;
   setFontFamily: (fontFamily: string) => Promise<void>;
+  setFontSize: (fontSize: number) => Promise<void>;
   clearNotice: () => void;
   flash: (notice: Exclude<Notice, null>) => void;
 };
@@ -70,14 +76,15 @@ function newId(prefix: string) {
   return `${prefix}-${crypto.randomUUID()}`;
 }
 
-function toDb(state: AppState): AppDb {
+function toState(db: AppDb) {
   return {
-    settings: state.settings,
-    groups: state.groups,
-    ingredients: state.ingredients,
-    buyers: state.buyers,
-    orders: state.orders,
-    templates: state.templates,
+    settings: db.settings,
+    groups: db.groups,
+    ingredients: db.ingredients.map((item) => normalizeIngredient(item)),
+    buyers: db.buyers,
+    orders: db.orders,
+    templates: db.templates,
+    storageKind: getStorageKind(),
   };
 }
 
@@ -176,213 +183,187 @@ export function buildSummary(
   return { from: start, to: end, buyers, sections };
 }
 
-export const useAppStore = create<AppState>((set, get) => ({
-  loaded: false,
-  saving: false,
-  storageKind: "files",
-  notice: null,
-  settings: { locale: "zh", fontFamily: DEFAULT_FONT_FAMILY },
-  groups: [],
-  ingredients: [],
-  buyers: [],
-  orders: [],
-  templates: [],
-
-  flash: (notice) => {
-    set({ notice });
-    window.setTimeout(() => {
-      if (get().notice === notice) set({ notice: null });
-    }, 2400);
-  },
-
-  clearNotice: () => set({ notice: null }),
-
-  load: async () => {
-    const db = await fetchDb();
-    await i18n.changeLanguage(db.settings.locale);
-    set({
-      ...db,
-      ingredients: db.ingredients.map((item) => normalizeIngredient(item)),
-      storageKind: getStorageKind(),
-      loaded: true,
-    });
-  },
-
-  persist: async (patch) => {
-    const next = { ...toDb(get()), ...patch };
-    set({ ...next, saving: true });
+export const useAppStore = create<AppState>((set, get) => {
+  async function mutate(run: () => Promise<AppDb>) {
+    set({ saving: true });
     try {
-      await putDb(next);
-      set({ saving: false });
+      const db = await run();
+      set({ ...toState(db), saving: false });
     } catch (error) {
       set({ saving: false });
       throw error;
     }
-  },
+  }
 
-  setLocale: async (locale) => {
-    await i18n.changeLanguage(locale);
-    await get().persist({ settings: { ...get().settings, locale } });
-  },
+  return {
+    loaded: false,
+    saving: false,
+    storageKind: "files",
+    notice: null,
+    settings: { locale: "zh", fontFamily: DEFAULT_FONT_FAMILY, fontSize: DEFAULT_FONT_SIZE },
+    groups: [],
+    ingredients: [],
+    buyers: [],
+    orders: [],
+    templates: [],
 
-  addGroup: async (name) => {
-    const groups = get().groups;
-    const group: Group = {
-      id: newId("group"),
-      name: name.trim(),
-      sort: groups.length ? Math.max(...groups.map((item) => item.sort)) + 1 : 0,
-    };
-    await get().persist({ groups: [...groups, group] });
-  },
+    flash: (notice) => {
+      set({ notice });
+      window.setTimeout(() => {
+        if (get().notice === notice) set({ notice: null });
+      }, 2400);
+    },
 
-  updateGroup: async (id, name) => {
-    await get().persist({
-      groups: get().groups.map((group) =>
-        group.id === id
-          ? { ...group, name: name.trim(), i18nKey: undefined }
-          : group,
-      ),
-    });
-  },
+    clearNotice: () => set({ notice: null }),
 
-  deleteGroup: async (id) => {
-    if (get().ingredients.some((ingredient) => ingredient.groupId === id)) {
-      throw new Error("group-in-use");
-    }
-    await get().persist({
-      groups: get().groups.filter((group) => group.id !== id),
-    });
-  },
+    load: async () => {
+      const db = await fetchDb();
+      await i18n.changeLanguage(db.settings.locale);
+      set({ ...toState(db), loaded: true });
+    },
 
-  saveIngredient: async ({ id, code, name, nameEn, remark, groupId, images }) => {
-    const ingredients = get().ingredients;
-    const existing = id
-      ? ingredients.find((item) => item.id === id)
-      : undefined;
-    const nextId = existing?.id ?? newId("ing");
-    const nextCode = code.trim();
+    setLocale: async (locale) => {
+      await i18n.changeLanguage(locale);
+      await mutate(() => saveSettings({ locale }));
+    },
 
-    if (
-      nextCode &&
-      ingredients.some(
-        (item) =>
-          item.id !== nextId &&
-          item.code.trim().toLowerCase() === nextCode.toLowerCase(),
-      )
-    ) {
-      throw new Error("code-taken");
-    }
+    addGroup: async (name) => {
+      const groups = get().groups;
+      const group: Group = {
+        id: newId("group"),
+        name: name.trim(),
+        sort: groups.length ? Math.max(...groups.map((item) => item.sort)) + 1 : 0,
+      };
+      await mutate(() => saveGroup(group));
+    },
 
-    if (images) {
-      await putIngredientImages(nextId, images);
-    }
+    updateGroup: async (id, name) => {
+      const existing = get().groups.find((group) => group.id === id);
+      if (!existing) return;
+      await mutate(() =>
+        saveGroup({ ...existing, name: name.trim(), i18nKey: undefined }),
+      );
+    },
 
-    const nextIngredient: Ingredient = {
-      id: nextId,
-      groupId,
-      code: nextCode,
-      name: name.trim(),
-      nameEn: nameEn.trim(),
-      remark: remark.trim(),
-      hasImage: Boolean(images) || Boolean(existing?.hasImage),
-      imageRev: (existing?.imageRev ?? 0) + (images ? 1 : 0),
-    };
+    deleteGroup: async (id) => {
+      if (get().ingredients.some((ingredient) => ingredient.groupId === id)) {
+        throw new Error("group-in-use");
+      }
+      await mutate(() => deleteRecord("groups", id));
+    },
 
-    await get().persist({
-      ingredients: existing
-        ? ingredients.map((item) => (item.id === nextId ? nextIngredient : item))
-        : [...ingredients, nextIngredient],
-    });
-  },
+    saveIngredient: async ({ id, code, name, nameEn, remark, groupId, images }) => {
+      const ingredients = get().ingredients;
+      const existing = id
+        ? ingredients.find((item) => item.id === id)
+        : undefined;
+      const nextId = existing?.id ?? newId("ing");
+      const nextCode = code.trim();
 
-  deleteIngredient: async (id) => {
-    await get().persist({
-      ingredients: get().ingredients.filter((item) => item.id !== id),
-    });
-    try {
-      await deleteIngredientImages(id);
-    } catch {
-      // Keep metadata deletion even if image files are already gone.
-    }
-  },
+      if (
+        nextCode &&
+        ingredients.some(
+          (item) =>
+            item.id !== nextId &&
+            item.code.trim().toLowerCase() === nextCode.toLowerCase(),
+        )
+      ) {
+        throw new Error("code-taken");
+      }
 
-  addBuyer: async (name) => {
-    const buyers = get().buyers;
-    const buyer: Buyer = {
-      id: newId("buyer"),
-      name: name.trim(),
-      sort: buyers.length ? Math.max(...buyers.map((item) => item.sort)) + 1 : 0,
-    };
-    await get().persist({ buyers: [...buyers, buyer] });
-  },
+      if (images) {
+        await putIngredientImages(nextId, images);
+      }
 
-  updateBuyer: async (id, name) => {
-    await get().persist({
-      buyers: get().buyers.map((buyer) =>
-        buyer.id === id ? { ...buyer, name: name.trim() } : buyer,
-      ),
-    });
-  },
+      const nextIngredient: Ingredient = {
+        id: nextId,
+        groupId,
+        code: nextCode,
+        name: name.trim(),
+        nameEn: nameEn.trim(),
+        remark: remark.trim(),
+        hasImage: Boolean(images) || Boolean(existing?.hasImage),
+        imageRev: (existing?.imageRev ?? 0) + (images ? 1 : 0),
+      };
 
-  deleteBuyer: async (id) => {
-    await get().persist({
-      buyers: get().buyers.filter((buyer) => buyer.id !== id),
-    });
-  },
+      await mutate(() => saveIngredient(nextIngredient));
+    },
 
-  upsertOrder: async ({ date, buyerId, items }) => {
-    const cleaned = items.filter((item) => item.quantity > 0);
-    const orders = get().orders;
-    const existing = orders.find(
-      (order) => order.date === date && order.buyerId === buyerId,
-    );
-    const next: Order = {
-      id: existing?.id ?? newId("order"),
-      date,
-      buyerId,
-      items: cleaned,
-      updatedAt: Date.now(),
-    };
-    await get().persist({
-      orders: existing
-        ? orders.map((order) => (order.id === existing.id ? next : order))
-        : [...orders, next],
-    });
-  },
+    deleteIngredient: async (id) => {
+      await mutate(() => deleteRecord("ingredients", id));
+      try {
+        await deleteIngredientImages(id);
+      } catch {
+        // Keep metadata deletion even if image files are already gone.
+      }
+    },
 
-  saveTemplate: async ({ id, buyerId, kind, name, items }) => {
-    const templates = get().templates;
-    const existing = id ? templates.find((item) => item.id === id) : undefined;
-    const cleaned = items
-      .filter((item) => (kind === "fixed" ? item.quantity > 0 : true))
-      .map((item) => ({
-        ingredientId: item.ingredientId,
-        quantity: kind === "fixed" ? item.quantity : 0,
-      }));
-    const next: OrderTemplate = {
-      id: existing?.id ?? newId("template"),
-      buyerId,
-      kind,
-      name: name.trim(),
-      items: cleaned,
-      updatedAt: Date.now(),
-    };
-    await get().persist({
-      templates: existing
-        ? templates.map((item) => (item.id === next.id ? next : item))
-        : [...templates, next],
-    });
-  },
+    addBuyer: async (name) => {
+      const buyers = get().buyers;
+      const buyer: Buyer = {
+        id: newId("buyer"),
+        name: name.trim(),
+        sort: buyers.length ? Math.max(...buyers.map((item) => item.sort)) + 1 : 0,
+      };
+      await mutate(() => saveBuyer(buyer));
+    },
 
-  deleteTemplate: async (id) => {
-    await get().persist({
-      templates: get().templates.filter((item) => item.id !== id),
-    });
-  },
+    updateBuyer: async (id, name) => {
+      const existing = get().buyers.find((buyer) => buyer.id === id);
+      if (!existing) return;
+      await mutate(() => saveBuyer({ ...existing, name: name.trim() }));
+    },
 
-  setFontFamily: async (fontFamily) => {
-    await get().persist({
-      settings: { ...get().settings, fontFamily },
-    });
-  },
-}));
+    deleteBuyer: async (id) => {
+      await mutate(() => deleteRecord("buyers", id));
+    },
+
+    upsertOrder: async ({ date, buyerId, items }) => {
+      const cleaned = items.filter((item) => item.quantity > 0);
+      const orders = get().orders;
+      const existing = orders.find(
+        (order) => order.date === date && order.buyerId === buyerId,
+      );
+      const next: Order = {
+        id: existing?.id ?? newId("order"),
+        date,
+        buyerId,
+        items: cleaned,
+        updatedAt: Date.now(),
+      };
+      await mutate(() => saveOrder(next));
+    },
+
+    saveTemplate: async ({ id, buyerId, kind, name, items }) => {
+      const templates = get().templates;
+      const existing = id ? templates.find((item) => item.id === id) : undefined;
+      const cleaned = items
+        .filter((item) => (kind === "fixed" ? item.quantity > 0 : true))
+        .map((item) => ({
+          ingredientId: item.ingredientId,
+          quantity: kind === "fixed" ? item.quantity : 0,
+        }));
+      const next: OrderTemplate = {
+        id: existing?.id ?? newId("template"),
+        buyerId,
+        kind,
+        name: name.trim(),
+        items: cleaned,
+        updatedAt: Date.now(),
+      };
+      await mutate(() => saveTemplate(next));
+    },
+
+    deleteTemplate: async (id) => {
+      await mutate(() => deleteRecord("templates", id));
+    },
+
+    setFontFamily: async (fontFamily) => {
+      await mutate(() => saveSettings({ fontFamily }));
+    },
+
+    setFontSize: async (fontSize) => {
+      await mutate(() => saveSettings({ fontSize }));
+    },
+  };
+});

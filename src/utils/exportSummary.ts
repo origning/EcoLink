@@ -1,4 +1,3 @@
-import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 import type { Group, SummaryMatrix } from "../types";
 import { formatDateTime } from "./format";
@@ -23,6 +22,7 @@ type Labels = {
   groupName: (group: Group) => string;
   deleted: string;
   fontFamily: string;
+  fontSize: number;
   buyerName?: string;
 };
 
@@ -44,6 +44,8 @@ export async function exportSummary(
   labels: Labels,
   options: { buyerId?: string } = {},
 ) {
+  // 按需加载 exceljs：只有点「导出」时才下载这部分代码，首屏更快。
+  const { default: ExcelJS } = await import("exceljs");
   const buyers = options.buyerId
     ? matrix.buyers.filter((buyer) => buyer.id === options.buyerId)
     : matrix.buyers;
@@ -73,7 +75,7 @@ export async function exportSummary(
   if (showTotal) sheet.getColumn(totalCol).width = 10;
 
   // 第 1 行：标题；第 2 行：日期标注；第 3 行：表头
-  styleTitleRow(sheet, 1, lastCol, labels.title, labels.fontFamily);
+  styleTitleRow(sheet, 1, lastCol, labels.title, labels.fontFamily, labels.fontSize);
   const rangeText =
     matrix.from === matrix.to ? matrix.from : `${matrix.from} ~ ${matrix.to}`;
   const scopeText = singleBuyer?.name ? ` · ${singleBuyer.name}` : "";
@@ -83,6 +85,7 @@ export async function exportSummary(
     lastCol,
     `${labels.rangeLabel}: ${rangeText}${scopeText}    ${labels.exportedAtLabel}: ${formatDateTime()}`,
     labels.fontFamily,
+    labels.fontSize,
   );
 
   const headerValues = [
@@ -95,7 +98,7 @@ export async function exportSummary(
   const header = sheet.getRow(3);
   header.values = headerValues;
   header.eachCell((cell) => {
-    cell.font = fontFor(labels.fontFamily, 10, true, "FFFFFFFF");
+    cell.font = fontFor(labels.fontFamily, labels.fontSize, true, "FFFFFFFF");
     cell.fill = {
       type: "pattern",
       pattern: "solid",
@@ -116,7 +119,7 @@ export async function exportSummary(
     const groupRow = sheet.getRow(rowIndex);
     groupRow.getCell(1).value = labels.groupName(section.group);
     sheet.mergeCells(rowIndex, 1, rowIndex, lastCol);
-    groupRow.getCell(1).font = fontFor(labels.fontFamily, 10, true, BRAND_ARGB);
+    groupRow.getCell(1).font = fontFor(labels.fontFamily, labels.fontSize, true, BRAND_ARGB);
     groupRow.getCell(1).fill = {
       type: "pattern",
       pattern: "solid",
@@ -128,35 +131,34 @@ export async function exportSummary(
 
     for (const row of section.rows) {
       const excelRow = sheet.getRow(rowIndex);
-      excelRow.height = 22;
 
       const codeCell = excelRow.getCell(codeCol);
       codeCell.value = row.ingredient.code || "";
-      codeCell.font = fontFor(labels.fontFamily, 10);
-      codeCell.alignment = { vertical: "middle", horizontal: "center" };
+      codeCell.font = fontFor(labels.fontFamily, labels.fontSize);
+      codeCell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
 
       const nameCell = excelRow.getCell(nameCol);
       nameCell.value = row.ingredient.nameEn || labels.deleted;
-      nameCell.font = fontFor(labels.fontFamily, 10);
-      nameCell.alignment = { vertical: "middle", horizontal: "left" };
+      nameCell.font = fontFor(labels.fontFamily, labels.fontSize);
+      nameCell.alignment = { vertical: "middle", horizontal: "left", wrapText: true };
 
       const itemCell = excelRow.getCell(itemCol);
       itemCell.value = row.ingredient.name || "";
-      itemCell.font = fontFor(labels.fontFamily, 10);
-      itemCell.alignment = { vertical: "middle", horizontal: "center" };
+      itemCell.font = fontFor(labels.fontFamily, labels.fontSize);
+      itemCell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
 
       buyers.forEach((buyer, index) => {
         const quantity = row.quantities[buyer.id] ?? 0;
         const cell = excelRow.getCell(firstBuyerCol + index);
         cell.value = quantity > 0 ? quantity : "";
-        cell.font = fontFor(labels.fontFamily, 10);
+        cell.font = fontFor(labels.fontFamily, labels.fontSize);
         cell.alignment = { vertical: "middle", horizontal: "center" };
       });
 
       if (showTotal) {
         const totalCell = excelRow.getCell(totalCol);
         totalCell.value = row.total;
-        totalCell.font = fontFor(labels.fontFamily, 10, true);
+        totalCell.font = fontFor(labels.fontFamily, labels.fontSize, true);
         totalCell.alignment = { vertical: "middle", horizontal: "center" };
       }
 

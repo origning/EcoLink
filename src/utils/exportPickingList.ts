@@ -1,4 +1,3 @@
-import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 import type { Group, SummaryMatrix } from "../types";
 import { formatDateTime } from "./format";
@@ -23,6 +22,7 @@ type Labels = {
   remark: string;
   groupName: (group: Group) => string;
   fontFamily: string;
+  fontSize: number;
   buyerName?: string;
 };
 
@@ -48,6 +48,8 @@ export async function exportPickingList(
   labels: Labels,
   options: { buyerId?: string } = {},
 ) {
+  // 按需加载 exceljs：只有点「导出」时才下载这部分代码，首屏更快。
+  const { default: ExcelJS } = await import("exceljs");
   const singleBuyer = options.buyerId
     ? matrix.buyers.find((buyer) => buyer.id === options.buyerId)
     : undefined;
@@ -65,7 +67,7 @@ export async function exportPickingList(
   sheet.getColumn(4).width = 10;
   sheet.getColumn(5).width = 24;
 
-  styleTitleRow(sheet, 1, lastCol, labels.title, labels.fontFamily);
+  styleTitleRow(sheet, 1, lastCol, labels.title, labels.fontFamily, labels.fontSize);
   const rangeText =
     matrix.from === matrix.to ? matrix.from : `${matrix.from} ~ ${matrix.to}`;
   const scopeText = singleBuyer ? ` · ${singleBuyer.name}` : "";
@@ -75,6 +77,7 @@ export async function exportPickingList(
     lastCol,
     `${labels.rangeLabel}: ${rangeText}${scopeText}    ${labels.exportedAtLabel}: ${formatDateTime()}`,
     labels.fontFamily,
+    labels.fontSize,
   );
 
   const header = sheet.getRow(3);
@@ -86,7 +89,7 @@ export async function exportPickingList(
     labels.remark,
   ];
   header.eachCell((cell) => {
-    cell.font = fontFor(labels.fontFamily, 10, true, "FFFFFFFF");
+    cell.font = fontFor(labels.fontFamily, labels.fontSize, true, "FFFFFFFF");
     cell.fill = {
       type: "pattern",
       pattern: "solid",
@@ -117,7 +120,7 @@ export async function exportPickingList(
     const groupRow = sheet.getRow(rowIndex);
     groupRow.getCell(1).value = labels.groupName(section.group);
     sheet.mergeCells(rowIndex, 1, rowIndex, lastCol);
-    groupRow.getCell(1).font = fontFor(labels.fontFamily, 11, true, BRAND_ARGB);
+    groupRow.getCell(1).font = fontFor(labels.fontFamily, labels.fontSize + 1, true, BRAND_ARGB);
     groupRow.getCell(1).fill = {
       type: "pattern",
       pattern: "solid",
@@ -129,18 +132,17 @@ export async function exportPickingList(
 
     for (const { row, quantity } of rows) {
       const excelRow = sheet.getRow(rowIndex);
-      excelRow.height = 22;
       excelRow.getCell(1).value = row.ingredient.name || "";
       excelRow.getCell(2).value = row.ingredient.code || "";
       excelRow.getCell(3).value = row.ingredient.nameEn || "";
       excelRow.getCell(4).value = quantity;
       excelRow.getCell(5).value = row.ingredient.remark || "";
       excelRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-        cell.font = fontFor(labels.fontFamily, 10);
+        cell.font = fontFor(labels.fontFamily, labels.fontSize);
         cell.alignment = {
           vertical: "middle",
           horizontal: colNumber === 3 ? "left" : "center",
-          wrapText: colNumber === 5,
+          wrapText: colNumber === 1 || colNumber === 3 || colNumber === 5,
         };
         cell.border = {
           top: { style: "thin", color: { argb: "FFE5E7EB" } },

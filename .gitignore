@@ -11,6 +11,7 @@ data/images/*
 tools/node/
 release/
 electron/server.cjs
+deploy/out/
 android/.gradle
 android/app/build
 android/build

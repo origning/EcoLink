@@ -1,5 +1,37 @@
 export const zh = {
   appName: "EcoLink",
+  auth: {
+    loginTitle: "登录 EcoLink",
+    loginHint: "请使用管理员分配的账号登录",
+    username: "账号",
+    password: "密码",
+    login: "登录",
+    loggingIn: "登录中…",
+    logout: "退出登录",
+    signedInAs: "当前登录：{{name}}",
+    role: "角色",
+    roleAdmin: "管理员",
+    roleEditor: "录入员",
+    needUsername: "请输入账号",
+    needPassword: "请输入密码",
+    badCredentials: "账号或密码错误",
+    changePassword: "修改密码",
+    currentPassword: "当前密码",
+    newPassword: "新密码",
+    passwordRule: "至少 6 位",
+    passwordTooShort: "密码至少 6 位",
+    usernameTaken: "该账号已存在",
+    lastAdmin: "至少要保留一个管理员",
+    cannotDeleteSelf: "不能删除当前登录的账号",
+    badCurrentPassword: "当前密码不正确",
+    passwordChanged: "密码已修改",
+    users: "用户管理",
+    userCount: "共 {{count}} 个用户",
+    addUser: "新增用户",
+    resetPassword: "重置密码",
+    resetPasswordPrompt: "为「{{name}}」设置新密码（至少 6 位）",
+    deleteUserConfirm: "确定删除用户「{{name}}」？",
+  },
   nav: {
     ingredients: "食材",
     buyers: "客户",
@@ -138,6 +170,10 @@ export const zh = {
     exportSingleBuyer: "导出该客户汇总",
     noBuyerData: "这家客户在这个时间段没有订单",
     empty: "这个时间范围内没有订单",
+    previewHint:
+      "拖动左边的点，或用 ↑ ↓ 调整分组和食材的顺序；调整好再点下面按钮导出。",
+    moveUp: "上移",
+    moveDown: "下移",
   },
   picking: {
     title: "拣货单",
@@ -163,6 +199,8 @@ export const zh = {
       "电脑开着网站时，同一 Wi-Fi 的手机也能打开终端里的地址。那是共用电脑上的数据。",
     storageFiles:
       "当前数据保存在这台电脑的文件里。关掉网站或换手机不会自动带上。",
+    storageCloud:
+      "当前数据保存在云端服务器，所有登录用户共享。换设备登录同一账号即可看到同一份数据。",
     storageDevice:
       "当前数据保存在这台设备里，不跟电脑或其他手机同步。换设备请先导出备份再导入。",
     addToHome:
@@ -170,5 +208,7 @@ export const zh = {
     exportSettings: "导出设置",
     fontFamily: "导出字体",
     fontHint: "电脑没装该字体会自动回退；Windows 上微软雅黑最稳。",
+    fontSize: "导出字号",
+    fontSizeHint: "采购汇总 / 单客户汇总 / 拣货单都会用这个字号。",
   },
 };

@@ -1,4 +1,4 @@
-import ExcelJS from "exceljs";
+import type ExcelJS from "exceljs";
 
 /** ExcelJS paperSize 9 = A4 */
 export const A4_PAPER_SIZE = 9;
@@ -58,11 +58,12 @@ export function styleTitleRow(
   lastCol: number,
   text: string,
   fontFamily: string,
+  fontSize = 10,
 ) {
   const row = sheet.getRow(rowIndex);
   row.getCell(1).value = text;
   sheet.mergeCells(rowIndex, 1, rowIndex, lastCol);
-  row.getCell(1).font = fontFor(fontFamily, 15, true, BRAND_ARGB);
+  row.getCell(1).font = fontFor(fontFamily, fontSize + 5, true, BRAND_ARGB);
   row.getCell(1).alignment = { vertical: "middle", horizontal: "center" };
   row.height = 28;
 }
@@ -73,11 +74,12 @@ export function styleMetaRow(
   lastCol: number,
   text: string,
   fontFamily: string,
+  fontSize = 10,
 ) {
   const row = sheet.getRow(rowIndex);
   row.getCell(1).value = text;
   sheet.mergeCells(rowIndex, 1, rowIndex, lastCol);
-  row.getCell(1).font = fontFor(fontFamily, 9, false, "FF6B7280");
+  row.getCell(1).font = fontFor(fontFamily, Math.max(8, fontSize - 1), false, "FF6B7280");
   row.getCell(1).alignment = { vertical: "middle", horizontal: "center" };
   row.height = 18;
 }

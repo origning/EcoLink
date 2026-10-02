@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
+import { createAuthStore } from "./authStore";
 import { createFileStore } from "./store";
 
 const MIME: Record<string, string> = {
@@ -45,8 +46,11 @@ export function startLocalServer(options: {
   dataDir: string;
   staticDir: string;
   port?: number;
+  /** 开启后需要账号密码登录；本地开发 / Electron 默认关闭。 */
+  auth?: boolean;
 }) {
-  const store = createFileStore(options.dataDir);
+  const authStore = options.auth ? createAuthStore(options.dataDir) : null;
+  const store = createFileStore(options.dataDir, { auth: authStore });
   store.ensureData();
 
   const server = http.createServer(async (req, res) => {
