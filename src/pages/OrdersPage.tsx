@@ -1269,7 +1269,12 @@ function OrderHistorySheet({
   const separator = i18n.language.startsWith("zh") ? "、" : ", ";
   const [from, setFrom] = useState(() => daysAgoIso(90));
   const [to, setTo] = useState(() => todayIso());
+  const [mode, setMode] = useState<"single" | "range">("range");
+  const [day, setDay] = useState(() => todayIso());
   const [keyword, setKeyword] = useState("");
+
+  const effFrom = mode === "single" ? day : from;
+  const effTo = mode === "single" ? day : to;
 
   const buyerMap = useMemo(
     () => new Map(buyers.map((buyer) => [buyer.id, buyer])),
@@ -1284,8 +1289,8 @@ function OrderHistorySheet({
     const needle = keyword.trim().toLowerCase();
     return orders
       .filter((order) => {
-        if (from && order.date < from) return false;
-        if (to && order.date > to) return false;
+        if (effFrom && order.date < effFrom) return false;
+        if (effTo && order.date > effTo) return false;
         if (!needle) return true;
         const buyer = buyerMap.get(order.buyerId);
         const itemNames = order.items
@@ -1300,31 +1305,58 @@ function OrderHistorySheet({
           .includes(needle);
       })
       .sort((a, b) => b.date.localeCompare(a.date) || b.updatedAt - a.updatedAt);
-  }, [orders, buyerMap, ingredientMap, from, to, keyword]);
+  }, [orders, buyerMap, ingredientMap, effFrom, effTo, keyword]);
 
   return (
     <Sheet title={t("orders.historyTitle")} onClose={onClose}>
       <div className="space-y-3">
         <p className="text-xs text-[var(--muted)]">{t("orders.historyHint")}</p>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Field label={t("orders.historyFrom")}>
-            <TextInput
-              type="date"
-              value={from}
-              onChange={(event) => setFrom(event.target.value)}
-            />
-          </Field>
-          <Field label={t("orders.historyTo")}>
-            <TextInput
-              type="date"
-              value={to}
-              onChange={(event) => setTo(event.target.value)}
-            />
-          </Field>
+        <div className="inline-flex rounded-[9px] border border-[var(--line)] bg-[var(--surface)] p-0.5">
+          {(["single", "range"] as const).map((item) => (
+            <button
+              key={item}
+              type="button"
+              onClick={() => setMode(item)}
+              className={`min-h-8 rounded-[7px] px-4 py-1 text-xs font-semibold transition ${
+                mode === item
+                  ? "bg-[var(--ink)] text-white shadow-[var(--shadow-xs)]"
+                  : "text-[var(--muted)] hover:text-[var(--ink)]"
+              }`}
+            >
+              {t(`summary.${item}`)}
+            </button>
+          ))}
         </div>
+        {mode === "single" ? (
+          <Field label={t("orders.date")}>
+            <TextInput
+              type="date"
+              value={day}
+              onChange={(event) => setDay(event.target.value)}
+            />
+          </Field>
+        ) : (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Field label={t("orders.historyFrom")}>
+              <TextInput
+                type="date"
+                value={from}
+                onChange={(event) => setFrom(event.target.value)}
+              />
+            </Field>
+            <Field label={t("orders.historyTo")}>
+              <TextInput
+                type="date"
+                value={to}
+                onChange={(event) => setTo(event.target.value)}
+              />
+            </Field>
+          </div>
+        )}
         <div className="flex items-center justify-between gap-2">
           <GhostButton
             onClick={() => {
+              setMode("range");
               setFrom("");
               setTo("");
             }}

@@ -1,7 +1,7 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { useEffect, type ReactNode } from "react";
+import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { BrandMark, Sheet } from "./ui";
+import { BrandMark } from "./ui";
 import { useAppStore } from "../store/useAppStore";
 import { useAuthStore } from "../store/useAuthStore";
 import { ROLE_OPTIONS, roleLabelKey } from "../utils/roles";
@@ -20,6 +20,9 @@ const mainTabs: Record<UserRole, Tab[]> = {
     { to: "/orders", key: "nav.orders", icon: OrderIcon },
     { to: "/summary", key: "nav.summary", icon: TableIcon },
     { to: "/invoices", key: "nav.invoices", icon: InvoiceIcon },
+    { to: "/pickups", key: "nav.pickups", icon: PickupIcon },
+    { to: "/packing", key: "nav.packing", icon: PackingIcon },
+    { to: "/data", key: "nav.data", icon: DataIcon },
   ],
   editor: [{ to: "/orders", key: "nav.orders", icon: OrderIcon }],
   picker: [{ to: "/pickups", key: "nav.pickups", icon: PickupIcon }],
@@ -29,12 +32,6 @@ const mainTabs: Record<UserRole, Tab[]> = {
     { to: "/invoices", key: "nav.invoices", icon: InvoiceIcon },
   ],
 };
-
-const moreItems: Tab[] = [
-  { to: "/pickups", key: "nav.pickups", icon: PickupIcon },
-  { to: "/packing", key: "nav.packing", icon: PackingIcon },
-  { to: "/data", key: "nav.data", icon: DataIcon },
-];
 
 export function AppShell() {
   const { t, i18n } = useTranslation();
@@ -47,17 +44,17 @@ export function AppShell() {
   const signOut = useAuthStore((s) => s.signOut);
   const setTestRole = useAuthStore((s) => s.setTestRole);
   const location = useLocation();
-  const navigate = useNavigate();
-  const [moreOpen, setMoreOpen] = useState(false);
-  const [desktopMoreOpen, setDesktopMoreOpen] = useState(false);
 
   const role = user?.role ?? "admin";
   const tabs = mainTabs[role];
-  const showMore = role === "admin";
-  const moreActive = moreItems.some((item) => location.pathname === item.to);
-  const columns = tabs.length + (showMore ? 1 : 0);
-  const bottomNavText = columns > 5 ? "text-[9px] tracking-tight" : "text-[10px] sm:text-xs";
-  const bottomNavPadding = columns > 5 ? "px-0.5" : "px-1";
+  const columns = tabs.length;
+  const bottomNavText =
+    columns > 6
+      ? "text-[8.5px] leading-none tracking-tight"
+      : columns > 5
+        ? "text-[9px] tracking-tight"
+        : "text-[10px] sm:text-xs";
+  const bottomNavPadding = columns > 6 ? "px-0" : columns > 5 ? "px-0.5" : "px-1";
   const testRoleEnabled = import.meta.env.DEV && !authEnabled;
   const initials = (user?.username ?? "EC").slice(0, 2).toUpperCase();
 
@@ -69,15 +66,13 @@ export function AppShell() {
   }, [i18n, locale]);
 
   useEffect(() => {
-    setMoreOpen(false);
-    setDesktopMoreOpen(false);
     window.scrollTo({ top: 0, behavior: "auto" });
   }, [role, location.pathname]);
 
   return (
     <div className="min-h-dvh">
       <header className="sticky top-0 z-30 border-b border-[var(--line)] bg-[color-mix(in_srgb,white_86%,transparent)] backdrop-blur-xl">
-        <div className="mx-auto flex h-[60px] w-full max-w-[1400px] items-center gap-5 px-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] lg:px-8">
+        <div className="mx-auto flex h-[60px] w-full max-w-[1400px] items-center gap-3 px-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] lg:px-8 xl:gap-5">
           <Link to="/" className="flex min-w-0 shrink-0 items-center gap-2.5">
             <BrandMark size={32} />
             <span className="min-w-0">
@@ -96,7 +91,7 @@ export function AppShell() {
                 key={tab.to}
                 to={tab.to}
                 className={({ isActive }) =>
-                  `inline-flex h-9 items-center gap-1.5 rounded-[9px] px-3 text-[13px] font-medium transition ${
+                  `inline-flex h-9 items-center gap-1.5 rounded-[9px] px-2 text-[12.5px] font-medium transition xl:px-3 xl:text-[13px] ${
                     isActive
                       ? "bg-[var(--ink)] text-white shadow-[0_8px_16px_-10px_rgba(23,23,23,0.7)]"
                       : "text-[var(--muted)] hover:bg-[var(--surface)] hover:text-[var(--ink)]"
@@ -105,62 +100,14 @@ export function AppShell() {
               >
                 {({ isActive }) => (
                   <>
-                    <tab.icon active={isActive} />
+                    <span className="hidden xl:inline-flex">
+                      <tab.icon active={isActive} />
+                    </span>
                     <span className="truncate">{t(tab.key)}</span>
                   </>
                 )}
               </NavLink>
             ))}
-
-            {showMore ? (
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setDesktopMoreOpen((open) => !open)}
-                  className={`inline-flex h-9 items-center gap-1.5 rounded-[9px] px-3 text-[13px] font-medium transition ${
-                    thisMoreStyle(moreActive, desktopMoreOpen)
-                  }`}
-                >
-                  <MoreIcon active={moreActive || desktopMoreOpen} />
-                  <span>{t("nav.more")}</span>
-                  <ChevronIcon open={desktopMoreOpen} />
-                </button>
-                {desktopMoreOpen ? (
-                  <>
-                    <button
-                      type="button"
-                      aria-label={t("common.close")}
-                      tabIndex={-1}
-                      onClick={() => setDesktopMoreOpen(false)}
-                      className="fixed inset-0 z-40 cursor-default bg-transparent"
-                    />
-                    <div className="absolute left-0 top-full z-50 mt-2 w-44 rounded-[14px] border border-[var(--line)] bg-white p-1.5 shadow-[var(--shadow-md)]">
-                      {moreItems.map((item) => (
-                        <NavLink
-                          key={item.to}
-                          to={item.to}
-                          onClick={() => setDesktopMoreOpen(false)}
-                          className={({ isActive }) =>
-                            `flex items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-[13px] font-medium transition ${
-                              isActive
-                                ? "bg-[var(--brand-soft)] text-[var(--brand-ink)]"
-                                : "text-[var(--muted)] hover:bg-[var(--surface)] hover:text-[var(--ink)]"
-                            }`
-                          }
-                        >
-                          {({ isActive }) => (
-                            <>
-                              <item.icon active={isActive} />
-                              <span>{t(item.key)}</span>
-                            </>
-                          )}
-                        </NavLink>
-                      ))}
-                    </div>
-                  </>
-                ) : null}
-              </div>
-            ) : null}
           </nav>
 
           <div className="ml-auto flex shrink-0 items-center gap-2">
@@ -192,19 +139,24 @@ export function AppShell() {
             ) : null}
 
             {user ? (
-              <div className="hidden items-center gap-2 pl-1 md:flex">
-                <span className="grid h-8 w-8 place-items-center rounded-full bg-gradient-to-br from-[#fb923c] to-[#ea580c] text-[10px] font-bold text-white">
+              <>
+                <span className="hidden h-8 w-8 place-items-center rounded-full bg-gradient-to-br from-[#fb923c] to-[#ea580c] text-[10px] font-bold text-white xl:grid 2xl:hidden">
                   {initials}
                 </span>
-                <span className="min-w-0 leading-tight">
-                  <span className="block max-w-[120px] truncate text-[11.5px] font-semibold">
-                    {user.username}
+                <div className="hidden items-center gap-2 pl-1 2xl:flex">
+                  <span className="grid h-8 w-8 place-items-center rounded-full bg-gradient-to-br from-[#fb923c] to-[#ea580c] text-[10px] font-bold text-white">
+                    {initials}
                   </span>
-                  <span className="block text-[9.5px] text-[var(--muted-2)]">
-                    {t(roleLabelKey(user.role))}
+                  <span className="min-w-0 leading-tight">
+                    <span className="block max-w-[120px] truncate text-[11.5px] font-semibold">
+                      {user.username}
+                    </span>
+                    <span className="block text-[9.5px] text-[var(--muted-2)]">
+                      {t(roleLabelKey(user.role))}
+                    </span>
                   </span>
-                </span>
-              </div>
+                </div>
+              </>
             ) : null}
           </div>
         </div>
@@ -281,55 +233,10 @@ export function AppShell() {
               )}
             </NavLink>
           ))}
-          {showMore ? (
-            <button
-              type="button"
-              onClick={() => setMoreOpen(true)}
-              className={`flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-[16px] ${bottomNavPadding} py-1.5 transition ${bottomNavText} ${
-                moreActive
-                  ? "bg-[var(--ink)] font-semibold text-white"
-                  : "font-medium text-[var(--muted)] hover:text-[var(--ink)]"
-              }`}
-            >
-              <MoreIcon active={moreActive} />
-              <span className="max-w-full truncate">{t("nav.more")}</span>
-            </button>
-          ) : null}
         </div>
       </nav>
-
-      {moreOpen ? (
-        <Sheet title={t("nav.more")} onClose={() => setMoreOpen(false)}>
-          <div className="space-y-2">
-            {moreItems.map((item) => (
-              <button
-                key={item.to}
-                type="button"
-                onClick={() => {
-                  setMoreOpen(false);
-                  navigate(item.to);
-                }}
-                className={`flex w-full items-center gap-3 rounded-[12px] px-3 py-3 text-left transition ${
-                  location.pathname === item.to
-                    ? "bg-[var(--brand-soft)] text-[var(--brand-ink)]"
-                    : "bg-[var(--surface)] text-[var(--ink)] hover:bg-[var(--brand-soft-2)]"
-                }`}
-              >
-                <item.icon active={location.pathname === item.to} />
-                <span className="font-medium">{t(item.key)}</span>
-              </button>
-            ))}
-          </div>
-        </Sheet>
-      ) : null}
     </div>
   );
-}
-
-function thisMoreStyle(active: boolean, open: boolean) {
-  return active || open
-    ? "bg-[var(--ink)] text-white shadow-[0_8px_16px_-10px_rgba(23,23,23,0.7)]"
-    : "text-[var(--muted)] hover:bg-[var(--surface)] hover:text-[var(--ink)]";
 }
 
 function LangButton({
@@ -363,27 +270,6 @@ function CheckIcon() {
         d="m5 12.5 4.5 4.5L19 7"
         stroke="currentColor"
         strokeWidth="2.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function ChevronIcon({ open }: { open: boolean }) {
-  return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden
-      className={`transition-transform ${open ? "rotate-180" : ""}`}
-    >
-      <path
-        d="m6 9 6 6 6-6"
-        stroke="currentColor"
-        strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
@@ -541,23 +427,6 @@ function PackingIcon() {
       />
       <path d="M4 8.5 12 13l8-4.5M12 13v7" stroke="currentColor" strokeWidth="1.8" />
       <path d="M8 6.2 16 11" stroke="currentColor" strokeWidth="1.8" />
-    </svg>
-  );
-}
-
-function MoreIcon({ active }: { active?: boolean }) {
-  return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden
-      className={active ? "opacity-100" : "opacity-80"}
-    >
-      <circle cx="5" cy="12" r="1.7" fill="currentColor" />
-      <circle cx="12" cy="12" r="1.7" fill="currentColor" />
-      <circle cx="19" cy="12" r="1.7" fill="currentColor" />
     </svg>
   );
 }

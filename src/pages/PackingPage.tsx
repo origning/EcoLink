@@ -41,12 +41,14 @@ export function PackingPage() {
   const flash = useAppStore((s) => s.flash);
   const user = useAuthStore((s) => s.user);
   const [editing, setEditing] = useState<PackRecord | "new" | null>(null);
+  const [mode, setMode] = useState<"single" | "range">("range");
+  const [day, setDay] = useState(todayIso());
   const [from, setFrom] = useState(monthStartIso());
   const [to, setTo] = useState(todayIso());
   const [keyword, setKeyword] = useState("");
 
-  const start = from <= to ? from : to;
-  const end = from <= to ? to : from;
+  const start = mode === "single" ? day : from <= to ? from : to;
+  const end = mode === "single" ? day : from <= to ? to : from;
   const filtered = useMemo(() => {
     const needle = keyword.trim().toLowerCase();
     return records
@@ -87,31 +89,59 @@ export function PackingPage() {
       ) : (
         <>
           <Card className="mb-4 space-y-3">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Field label={t("summary.from")}>
-                <TextInput
-                  type="date"
-                  value={from}
-                  onChange={(event) => setFrom(event.target.value)}
-                />
-              </Field>
-              <Field label={t("summary.to")}>
-                <TextInput
-                  type="date"
-                  value={to}
-                  onChange={(event) => setTo(event.target.value)}
-                />
-              </Field>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="inline-flex rounded-[9px] border border-[var(--line)] bg-[var(--surface)] p-0.5">
+                {(["single", "range"] as const).map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => setMode(item)}
+                    className={`min-h-8 rounded-[7px] px-4 py-1 text-xs font-semibold transition ${
+                      mode === item
+                        ? "bg-[var(--ink)] text-white shadow-[var(--shadow-xs)]"
+                        : "text-[var(--muted)] hover:text-[var(--ink)]"
+                    }`}
+                  >
+                    {t(`summary.${item}`)}
+                  </button>
+                ))}
+              </div>
+              <span className="text-xs text-[var(--muted)]">
+                {t("packing.count", { count: filtered.length })}
+              </span>
             </div>
+            {mode === "single" ? (
+              <Field label={t("packing.date")}>
+                <TextInput
+                  type="date"
+                  value={day}
+                  onChange={(event) => setDay(event.target.value)}
+                />
+              </Field>
+            ) : (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field label={t("summary.from")}>
+                  <TextInput
+                    type="date"
+                    value={from}
+                    onChange={(event) => setFrom(event.target.value)}
+                  />
+                </Field>
+                <Field label={t("summary.to")}>
+                  <TextInput
+                    type="date"
+                    value={to}
+                    onChange={(event) => setTo(event.target.value)}
+                  />
+                </Field>
+              </div>
+            )}
             <SearchInput
               value={keyword}
               onValueChange={setKeyword}
               placeholder={t("packing.searchPlaceholder")}
               clearLabel={t("common.clear")}
             />
-            <p className="text-xs text-[var(--muted)]">
-              {t("packing.count", { count: filtered.length })}
-            </p>
           </Card>
 
           {filtered.length === 0 ? (
