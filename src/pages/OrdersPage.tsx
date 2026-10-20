@@ -1184,7 +1184,7 @@ function OrderSummary({
               className="group flex items-center gap-2 rounded-[8px] px-1.5 py-1.5 transition hover:bg-white/[0.06]"
             >
               <span className="min-w-0 flex-1 truncate text-[11.5px] text-white/80">
-                {ingredient.name || ingredient.nameEn}
+                {ingredient.nameEn || ingredient.name}
               </span>
               <span className="shrink-0 text-[9.5px] text-white/30">
                 {ingredient.unit}
