@@ -45,6 +45,7 @@ type CollectionKey =
   | "groups"
   | "ingredients"
   | "buyers"
+  | "stores"
   | "orders"
   | "templates"
   | "pickupRecords"
@@ -781,6 +782,17 @@ export function createFileStore(
           createdAt: existing?.createdAt ?? now,
           updatedAt: now,
         };
+        for (const payment of (existing as PickupRecord | undefined)?.payments ??
+          []) {
+          for (const photo of payment.proofPhotos ?? []) {
+            removedPhotos.add(photo.id);
+          }
+        }
+        for (const payment of next.payments) {
+          for (const photo of payment.proofPhotos ?? []) {
+            removedPhotos.delete(photo.id);
+          }
+        }
         upsertInto(db, "pickupRecords", next);
       } else {
         const next: PackRecord = {
@@ -1045,13 +1057,14 @@ export function createFileStore(
 
     // 按实体增删改：每次只改动一条记录再落盘，避免整份覆盖把别人的改动冲掉。
     const entityMatch = url.match(
-      /^\/api\/(groups|ingredients|buyers|orders|templates)(?:\/([^/]+))?$/,
+      /^\/api\/(groups|ingredients|buyers|stores|orders|templates)(?:\/([^/]+))?$/,
     );
     if (entityMatch) {
       const collection = entityMatch[1] as
         | "groups"
         | "ingredients"
         | "buyers"
+        | "stores"
         | "orders"
         | "templates";
       const id = entityMatch[2] ? decodeURIComponent(entityMatch[2]) : null;

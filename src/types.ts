@@ -91,9 +91,31 @@ export type PickupPayment = {
   amount: number;
   method: string;
   note: string;
+  proofPhotos: PhotoRef[];
   createdBy: string;
   createdByName: string;
   createdAt: number;
+  /** 作废时间；作废后仍保留记录用于审计，但不再计入已付金额 */
+  voidedAt?: number;
+  voidedBy?: string;
+  voidedByName?: string;
+};
+
+export type StoreSettlementType = "immediate" | "monthly" | "custom";
+
+/** 拣货店铺档案：用于月结账期和到期日 */
+export type Store = {
+  id: string;
+  name: string;
+  settlementType: StoreSettlementType;
+  /** 月结日，1-31；31 表示当月最后一天，仅 monthly 使用 */
+  settlementDay: number;
+  /** 账期天数，用于计算到期日 */
+  dueDays: number;
+  contact: string;
+  phone: string;
+  note: string;
+  sort: number;
 };
 
 /** 取货员记录：多张取货照片、发票照片、税、金额、取货店名 */
@@ -244,6 +266,8 @@ export type AppDb = {
   groups: Group[];
   ingredients: Ingredient[];
   buyers: Buyer[];
+  /** 拣货店铺档案 */
+  stores: Store[];
   orders: Order[];
   /** 客户常用 / 固定订单模板 */
   templates: OrderTemplate[];

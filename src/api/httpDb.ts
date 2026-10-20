@@ -13,6 +13,7 @@ import type {
   PurgePreview,
   PurgeResult,
   StorageStats,
+  Store,
 } from "../types";
 
 async function parseJson<T>(res: Response): Promise<T> {
@@ -85,6 +86,10 @@ export function saveBuyer(buyer: Buyer) {
   return sendDb("/api/buyers", post(buyer));
 }
 
+export function saveStore(store: Store) {
+  return sendDb("/api/stores", post(store));
+}
+
 export function saveOrder(order: Order) {
   return sendDb("/api/orders", post(order));
 }
@@ -148,7 +153,13 @@ export function fetchStorageStats() {
 }
 
 export function deleteRecord(
-  collection: "groups" | "ingredients" | "buyers" | "orders" | "templates",
+  collection:
+    | "groups"
+    | "ingredients"
+    | "buyers"
+    | "stores"
+    | "orders"
+    | "templates",
   id: string,
 ) {
   return sendDb(`/api/${collection}/${encodeURIComponent(id)}`, {

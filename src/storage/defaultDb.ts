@@ -80,6 +80,7 @@ export function createDefaultDb(): AppDb {
     ],
     ingredients: [],
     buyers: [],
+    stores: [],
     orders: [],
     templates: [],
     pickupRecords: [],

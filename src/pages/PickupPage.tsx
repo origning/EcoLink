@@ -22,11 +22,14 @@ import { useAppStore } from "../store/useAppStore";
 import { useAuthStore } from "../store/useAuthStore";
 import { monthStartIso, todayIso } from "../utils/format";
 import {
+  pickupDueDate,
+  pickupIsOverdue,
   pickupOutstanding,
   pickupPaidAmount,
   pickupPaymentStatus,
+  storeForRecord,
 } from "../utils/payments";
-import type { PhotoRef, PickupRecord } from "../types";
+import type { PhotoRef, PickupRecord, Store } from "../types";
 
 function toDraftPhotos(photos: PhotoRef[]): DraftPhoto[] {
   return photos.map((photo) => ({
@@ -41,17 +44,21 @@ export function PickupPage() {
   const { t } = useTranslation();
   const records = useAppStore((s) => s.pickupRecords);
   const buyers = useAppStore((s) => s.buyers);
+  const stores = useAppStore((s) => s.stores);
   const saveRecord = useAppStore((s) => s.savePickupRecord);
   const addPayment = useAppStore((s) => s.addPickupPayment);
-  const deletePayment = useAppStore((s) => s.deletePickupPayment);
+  const voidPayment = useAppStore((s) => s.voidPickupPayment);
   const deleteRecord = useAppStore((s) => s.deletePickupRecord);
+  const saveStore = useAppStore((s) => s.saveStore);
+  const deleteStore = useAppStore((s) => s.deleteStore);
   const flash = useAppStore((s) => s.flash);
   const user = useAuthStore((s) => s.user);
   const [editing, setEditing] = useState<PickupRecord | "new" | null>(null);
   const [paymentTargetId, setPaymentTargetId] = useState<string | null>(null);
   const [settleOpen, setSettleOpen] = useState(false);
+  const [storesOpen, setStoresOpen] = useState(false);
   const [payFilter, setPayFilter] = useState<
-    "all" | "unpaid" | "partial" | "paid"
+    "all" | "unpaid" | "partial" | "paid" | "overdue"
   >("all");
   const [mode, setMode] = useState<"single" | "range">("range");
   const [day, setDay] = useState(todayIso());
@@ -61,12 +68,22 @@ export function PickupPage() {
 
   const start = mode === "single" ? day : from <= to ? from : to;
   const end = mode === "single" ? day : from <= to ? to : from;
+  const today = todayIso();
   const filtered = useMemo(() => {
     const needle = keyword.trim().toLowerCase();
     return records
       .filter((record) => {
         if (record.date < start || record.date > end) return false;
-        if (payFilter !== "all" && pickupPaymentStatus(record) !== payFilter) {
+        if (payFilter === "overdue") {
+          if (
+            !pickupIsOverdue(record, storeForRecord(record, stores), today)
+          ) {
+            return false;
+          }
+        } else if (
+          payFilter !== "all" &&
+          pickupPaymentStatus(record) !== payFilter
+        ) {
           return false;
         }
         if (!needle) return true;
@@ -80,7 +97,7 @@ export function PickupPage() {
         (a, b) =>
           b.date.localeCompare(a.date) || b.createdAt - a.createdAt,
       );
-  }, [records, buyers, start, end, keyword, payFilter]);
+  }, [records, buyers, stores, start, end, keyword, payFilter, today]);
 
   const totals = useMemo(() => {
     return filtered.reduce(
@@ -90,11 +107,14 @@ export function PickupPage() {
         acc.tax += record.tax;
         acc.paid += paid;
         acc.unpaid += Math.max(0, record.amount - paid);
+        if (pickupIsOverdue(record, storeForRecord(record, stores), today)) {
+          acc.overdue += Math.max(0, record.amount - paid);
+        }
         return acc;
       },
-      { amount: 0, tax: 0, paid: 0, unpaid: 0 },
+      { amount: 0, tax: 0, paid: 0, unpaid: 0, overdue: 0 },
     );
-  }, [filtered]);
+  }, [filtered, stores, today]);
 
   const paymentTarget =
     records.find((record) => record.id === paymentTargetId) ?? null;
@@ -108,6 +128,11 @@ export function PickupPage() {
         title={t("pickups.title")}
         action={
           <div className="flex flex-wrap justify-end gap-1">
+            {user?.role === "admin" ? (
+              <GhostButton onClick={() => setStoresOpen(true)}>
+                {t("pickups.manageStores")}
+              </GhostButton>
+            ) : null}
             <GhostButton onClick={() => setSettleOpen(true)}>
               {t("pickups.batchSettle")}
             </GhostButton>
@@ -194,13 +219,15 @@ export function PickupPage() {
                 <option value="unpaid">{t("pickups.statusUnpaid")}</option>
                 <option value="partial">{t("pickups.statusPartial")}</option>
                 <option value="paid">{t("pickups.statusPaid")}</option>
+                <option value="overdue">{t("pickups.statusOverdue")}</option>
               </select>
             </Field>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
               {[
                 { label: t("pickups.totalAmount"), value: totals.amount },
                 { label: t("pickups.totalPaid"), value: totals.paid },
                 { label: t("pickups.totalUnpaid"), value: totals.unpaid },
+                { label: t("pickups.totalOverdue"), value: totals.overdue },
                 { label: t("pickups.totalTax"), value: totals.tax },
               ].map((item) => (
                 <div
@@ -228,6 +255,9 @@ export function PickupPage() {
                 const paid = pickupPaidAmount(record);
                 const outstanding = pickupOutstanding(record);
                 const status = pickupPaymentStatus(record);
+                const store = storeForRecord(record, stores);
+                const dueDate = pickupDueDate(record, store);
+                const overdue = pickupIsOverdue(record, store, today);
                 const statusClass =
                   status === "paid"
                     ? "bg-emerald-50 text-emerald-700"
@@ -279,6 +309,11 @@ export function PickupPage() {
                                 ? t("pickups.statusPartial")
                                 : t("pickups.statusUnpaid")}
                           </span>
+                          {overdue ? (
+                            <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">
+                              {t("pickups.statusOverdue")}
+                            </span>
+                          ) : null}
                         </div>
                         <p className="mt-0.5 text-xs text-[var(--muted)]">
                           {record.date} · {t("pickups.tax")} {record.tax} ·{" "}
@@ -288,6 +323,11 @@ export function PickupPage() {
                           {t("pickups.paid")} {paid.toLocaleString()} ·{" "}
                           {t("pickups.unpaid")} {outstanding.toLocaleString()}
                         </p>
+                        {dueDate ? (
+                          <p className="mt-0.5 text-xs text-[var(--muted)]">
+                            {t("pickups.dueDate")}: {dueDate}
+                          </p>
+                        ) : null}
                         {buyer ? (
                           <p className="truncate text-xs text-[var(--ink)]">
                             {t("pickups.buyer")}: {buyer.code || buyer.name}
@@ -353,6 +393,7 @@ export function PickupPage() {
         <PickupSheet
           initial={editing === "new" ? null : editing}
           buyers={buyers}
+          stores={stores}
           onClose={() => setEditing(null)}
           onSave={async (input) => {
             try {
@@ -376,16 +417,16 @@ export function PickupPage() {
       {paymentTarget ? (
         <PaymentSheet
           record={paymentTarget}
-          canDelete={canEdit(paymentTarget)}
+          canVoid={canEdit(paymentTarget)}
           onClose={() => setPaymentTargetId(null)}
           onAdd={async (input) => {
             await addPayment(paymentTarget.id, input);
             flash({ type: "ok", message: t("pickups.paymentSaved") });
             setPaymentTargetId(null);
           }}
-          onDelete={async (paymentId) => {
-            await deletePayment(paymentTarget.id, paymentId);
-            flash({ type: "ok", message: t("pickups.paymentDeleted") });
+          onVoid={async (paymentId) => {
+            await voidPayment(paymentTarget.id, paymentId);
+            flash({ type: "ok", message: t("pickups.paymentVoided") });
           }}
         />
       ) : null}
@@ -408,7 +449,257 @@ export function PickupPage() {
           }}
         />
       ) : null}
+
+      {storesOpen ? (
+        <StoreSheet
+          stores={stores}
+          onClose={() => setStoresOpen(false)}
+          onSave={async (input) => {
+            await saveStore(input);
+            flash({ type: "ok", message: t("common.saved") });
+          }}
+          onDelete={async (id) => {
+            await deleteStore(id);
+            flash({ type: "ok", message: t("common.deleted") });
+          }}
+        />
+      ) : null}
     </div>
+  );
+}
+
+function StoreSheet({
+  stores,
+  onClose,
+  onSave,
+  onDelete,
+}: {
+  stores: Store[];
+  onClose: () => void;
+  onSave: (input: {
+    id?: string;
+    name: string;
+    settlementType: Store["settlementType"];
+    settlementDay: number;
+    dueDays: number;
+    contact: string;
+    phone: string;
+    note: string;
+  }) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
+}) {
+  const { t } = useTranslation();
+  const [editing, setEditing] = useState<Store | "new" | null>(null);
+  const [name, setName] = useState("");
+  const [settlementType, setSettlementType] =
+    useState<Store["settlementType"]>("immediate");
+  const [settlementDay, setSettlementDay] = useState("31");
+  const [dueDays, setDueDays] = useState("0");
+  const [contact, setContact] = useState("");
+  const [phone, setPhone] = useState("");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const startEdit = (store: Store | "new") => {
+    setEditing(store);
+    if (store === "new") {
+      setName("");
+      setSettlementType("immediate");
+      setSettlementDay("31");
+      setDueDays("0");
+      setContact("");
+      setPhone("");
+      setNote("");
+    } else {
+      setName(store.name);
+      setSettlementType(store.settlementType);
+      setSettlementDay(String(store.settlementDay));
+      setDueDays(String(store.dueDays));
+      setContact(store.contact);
+      setPhone(store.phone);
+      setNote(store.note);
+    }
+    setError(null);
+  };
+
+  return (
+    <Sheet title={t("pickups.manageStores")} onClose={onClose}>
+      <div className="space-y-4">
+        <div className="flex justify-end">
+          <PrimaryButton onClick={() => startEdit("new")}>
+            {t("pickups.addStore")}
+          </PrimaryButton>
+        </div>
+
+        {stores.length === 0 ? (
+          <p className="text-sm text-[var(--muted)]">
+            {t("pickups.noStores")}
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {stores.map((store) => (
+              <li
+                key={store.id}
+                className="flex items-center justify-between gap-2 rounded-2xl bg-[var(--bg)] px-3 py-2"
+              >
+                <div className="min-w-0">
+                  <p className="truncate font-medium">{store.name}</p>
+                  <p className="text-xs text-[var(--muted)]">
+                    {store.settlementType === "monthly"
+                      ? t("pickups.settlementMonthly", {
+                          day: store.settlementDay,
+                        })
+                      : store.settlementType === "custom"
+                        ? t("pickups.settlementCustom")
+                        : t("pickups.settlementImmediate")}
+                    {store.dueDays > 0
+                      ? ` · ${t("pickups.dueDaysValue", {
+                          days: store.dueDays,
+                        })}`
+                      : ""}
+                  </p>
+                </div>
+                <div className="flex shrink-0 gap-1">
+                  <GhostButton onClick={() => startEdit(store)}>
+                    {t("common.edit")}
+                  </GhostButton>
+                  <GhostButton
+                    danger
+                    onClick={() => {
+                      if (!window.confirm(t("pickups.storeDeleteConfirm"))) {
+                        return;
+                      }
+                      void onDelete(store.id).catch((err) =>
+                        setError(String(err)),
+                      );
+                    }}
+                  >
+                    {t("common.delete")}
+                  </GhostButton>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {editing ? (
+          <form
+            className="space-y-3 border-t border-[var(--line)] pt-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!name.trim()) {
+                setError(t("pickups.needStoreName"));
+                return;
+              }
+              setError(null);
+              setBusy(true);
+              void onSave({
+                id: editing === "new" ? undefined : editing.id,
+                name,
+                settlementType,
+                settlementDay: Number(settlementDay) || 31,
+                dueDays: Number(dueDays) || 0,
+                contact,
+                phone,
+                note,
+              })
+                .then(() => setEditing(null))
+                .catch((err) =>
+                  setError(
+                    err instanceof Error && err.message === "store-name-taken"
+                      ? t("pickups.storeNameTaken")
+                      : String(err),
+                  ),
+                )
+                .finally(() => setBusy(false));
+            }}
+          >
+            <p className="text-sm font-medium text-[var(--muted)]">
+              {editing === "new" ? t("pickups.addStore") : t("pickups.editStore")}
+            </p>
+            <Field label={t("pickups.storeName")}>
+              <TextInput
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+              />
+            </Field>
+            <Field label={t("pickups.settlementType")}>
+              <select
+                value={settlementType}
+                onChange={(event) =>
+                  setSettlementType(
+                    event.target.value as Store["settlementType"],
+                  )
+                }
+                className="min-h-11 w-full rounded-2xl border border-[var(--line)] bg-[var(--bg)] px-3 py-2.5 text-base"
+              >
+                <option value="immediate">
+                  {t("pickups.settlementImmediate")}
+                </option>
+                <option value="monthly">
+                  {t("pickups.settlementMonthlyOption")}
+                </option>
+                <option value="custom">{t("pickups.settlementCustom")}</option>
+              </select>
+            </Field>
+            {settlementType === "monthly" ? (
+              <Field
+                label={t("pickups.settlementDay")}
+                hint={t("pickups.settlementDayHint")}
+              >
+                <TextInput
+                  type="number"
+                  min="1"
+                  max="31"
+                  value={settlementDay}
+                  onChange={(event) => setSettlementDay(event.target.value)}
+                />
+              </Field>
+            ) : null}
+            <Field label={t("pickups.dueDays")} hint={t("common.optional")}>
+              <TextInput
+                type="number"
+                min="0"
+                value={dueDays}
+                onChange={(event) => setDueDays(event.target.value)}
+              />
+            </Field>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field label={t("pickups.contact")} hint={t("common.optional")}>
+                <TextInput
+                  value={contact}
+                  onChange={(event) => setContact(event.target.value)}
+                />
+              </Field>
+              <Field label={t("pickups.phone")} hint={t("common.optional")}>
+                <TextInput
+                  value={phone}
+                  onChange={(event) => setPhone(event.target.value)}
+                />
+              </Field>
+            </div>
+            <Field label={t("pickups.note")} hint={t("common.optional")}>
+              <TextInput
+                value={note}
+                onChange={(event) => setNote(event.target.value)}
+              />
+            </Field>
+            {error ? (
+              <p className="text-sm text-[var(--danger)]">{error}</p>
+            ) : null}
+            <div className="flex justify-end gap-2">
+              <GhostButton onClick={() => setEditing(null)}>
+                {t("common.cancel")}
+              </GhostButton>
+              <PrimaryButton type="submit" disabled={busy}>
+                {busy ? t("common.saving") : t("common.save")}
+              </PrimaryButton>
+            </div>
+          </form>
+        ) : null}
+      </div>
+    </Sheet>
   );
 }
 
@@ -623,9 +914,13 @@ function SettlementSheet({
               }
               setError(null);
               setBusy(true);
-              void onSave(allocations, { date, method, note }).finally(() =>
-                setBusy(false),
-              );
+              void onSave(allocations, {
+                date,
+                method,
+                note:
+                  note.trim() ||
+                  `${t("pickups.batchSettle")} ${month}`,
+              }).finally(() => setBusy(false));
             }}
           >
             {busy ? t("common.saving") : t("pickups.settleSave")}
@@ -638,21 +933,27 @@ function SettlementSheet({
 
 function PaymentSheet({
   record,
-  canDelete,
+  canVoid,
   onClose,
   onAdd,
-  onDelete,
+  onVoid,
 }: {
   record: PickupRecord;
-  canDelete: boolean;
+  canVoid: boolean;
   onClose: () => void;
   onAdd: (input: {
     date: string;
     amount: number;
     method: string;
     note: string;
+    proofPhotos: {
+      id: string;
+      rev: number;
+      preview?: string;
+      thumb?: string;
+    }[];
   }) => Promise<void>;
-  onDelete: (paymentId: string) => Promise<void>;
+  onVoid: (paymentId: string) => Promise<void>;
 }) {
   const { t } = useTranslation();
   const paid = pickupPaidAmount(record);
@@ -664,6 +965,7 @@ function PaymentSheet({
   );
   const [method, setMethod] = useState("bank");
   const [note, setNote] = useState("");
+  const [proofPhotos, setProofPhotos] = useState<DraftPhoto[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -697,38 +999,61 @@ function PaymentSheet({
               {record.payments.map((payment) => (
                 <li
                   key={payment.id}
-                  className="flex items-center justify-between gap-2 rounded-2xl bg-[var(--bg)] px-3 py-2"
+                  className={`flex items-center justify-between gap-2 rounded-2xl bg-[var(--bg)] px-3 py-2 ${
+                    payment.voidedAt ? "opacity-60" : ""
+                  }`}
                 >
-                  <div className="min-w-0 text-sm">
-                    <p className="font-medium">
-                      {payment.date} · {payment.amount.toLocaleString()}
-                    </p>
-                    <p className="truncate text-xs text-[var(--muted)]">
-                      {[
-                        payment.method === "bank"
-                          ? t("pickups.paymentBank")
-                          : payment.method === "cash"
-                            ? t("pickups.paymentCash")
-                            : t("pickups.paymentOther"),
-                        payment.note,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </p>
+                  <div className="flex min-w-0 items-center gap-2 text-sm">
+                    {payment.proofPhotos[0] ? (
+                      <Thumb
+                        src={ingredientThumbUrl(
+                          payment.proofPhotos[0].id,
+                          payment.proofPhotos[0].rev,
+                        )}
+                        alt={t("pickups.paymentProof")}
+                        size={36}
+                      />
+                    ) : null}
+                    <div className="min-w-0">
+                      <p
+                        className={`font-medium ${
+                          payment.voidedAt ? "line-through" : ""
+                        }`}
+                      >
+                        {payment.date} · {payment.amount.toLocaleString()}
+                        {payment.voidedAt ? (
+                          <span className="ml-2 rounded-full bg-red-50 px-1.5 py-0.5 text-[10px] font-semibold text-red-600 no-underline">
+                            {t("pickups.paymentVoided")}
+                          </span>
+                        ) : null}
+                      </p>
+                      <p className="truncate text-xs text-[var(--muted)]">
+                        {[
+                          payment.method === "bank"
+                            ? t("pickups.paymentBank")
+                            : payment.method === "cash"
+                              ? t("pickups.paymentCash")
+                              : t("pickups.paymentOther"),
+                          payment.note,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
+                    </div>
                   </div>
-                  {canDelete ? (
+                  {canVoid && !payment.voidedAt ? (
                     <GhostButton
                       danger
                       onClick={() => {
-                        if (!window.confirm(t("pickups.paymentDeleteConfirm"))) {
+                        if (!window.confirm(t("pickups.paymentVoidConfirm"))) {
                           return;
                         }
-                        void onDelete(payment.id).catch((err) =>
+                        void onVoid(payment.id).catch((err) =>
                           setError(String(err)),
                         );
                       }}
                     >
-                      {t("common.delete")}
+                      {t("pickups.voidPayment")}
                     </GhostButton>
                   ) : null}
                 </li>
@@ -758,6 +1083,12 @@ function PaymentSheet({
                 amount: value,
                 method,
                 note,
+                proofPhotos: proofPhotos.map((photo) => ({
+                  id: photo.id,
+                  rev: photo.rev,
+                  preview: photo.previewBase64,
+                  thumb: photo.thumbBase64,
+                })),
               }).finally(() => setBusy(false));
             }}
           >
@@ -800,6 +1131,38 @@ function PaymentSheet({
                 onChange={(event) => setNote(event.target.value)}
               />
             </Field>
+            <Field
+              label={t("pickups.paymentProof")}
+              hint={t("common.optional")}
+            >
+              <MultiPhotoPicker
+                photos={proofPhotos}
+                nextId={() =>
+                  `${record.id}-pay-${crypto.randomUUID()}`
+                }
+                onAdd={(photo) =>
+                  setProofPhotos((prev) => [...prev, photo])
+                }
+                onRemove={(key) =>
+                  setProofPhotos((prev) =>
+                    prev.filter((photo) => photo.key !== key),
+                  )
+                }
+                onError={(photoError) =>
+                  setError(
+                    photoError.message === "too-large"
+                      ? t("pickups.tooLarge")
+                      : t("pickups.unsupported"),
+                  )
+                }
+                labels={{
+                  add: t("pickups.addPaymentProof"),
+                  busy: t("pickups.compressing"),
+                  remove: t("common.delete"),
+                  hint: t("pickups.paymentProofHint"),
+                }}
+              />
+            </Field>
             {error ? (
               <p className="text-sm text-[var(--danger)]">{error}</p>
             ) : null}
@@ -823,11 +1186,13 @@ function PaymentSheet({
 function PickupSheet({
   initial,
   buyers,
+  stores,
   onClose,
   onSave,
 }: {
   initial: PickupRecord | null;
   buyers: ReturnType<typeof useAppStore.getState>["buyers"];
+  stores: Store[];
   onClose: () => void;
   onSave: (input: {
     id?: string;
@@ -930,9 +1295,15 @@ function PickupSheet({
         </Field>
         <Field label={t("pickups.storeName")} hint={t("common.required")}>
           <TextInput
+            list="pickup-store-options"
             value={storeName}
             onChange={(event) => setStoreName(event.target.value)}
           />
+          <datalist id="pickup-store-options">
+            {stores.map((store) => (
+              <option key={store.id} value={store.name} />
+            ))}
+          </datalist>
         </Field>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label={t("pickups.tax")}>

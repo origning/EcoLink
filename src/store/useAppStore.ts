@@ -16,6 +16,7 @@ import {
   savePackRecord as apiSavePackRecord,
   savePickupRecord as apiSavePickupRecord,
   saveSettings,
+  saveStore as apiSaveStore,
   saveTemplate,
 } from "../api/db";
 import i18n from "../i18n";
@@ -41,6 +42,7 @@ import type {
   PickupPayment,
   PickupRecord,
   PurgeResult,
+  Store,
   SummaryMatrix,
 } from "../types";
 import type { StorageKind } from "../api/db";
@@ -112,6 +114,17 @@ type AppState = AppDb & {
   addBuyer: (input: BuyerInput) => Promise<void>;
   updateBuyer: (id: string, input: BuyerInput) => Promise<void>;
   deleteBuyer: (id: string) => Promise<void>;
+  saveStore: (input: {
+    id?: string;
+    name: string;
+    settlementType: Store["settlementType"];
+    settlementDay: number;
+    dueDays: number;
+    contact: string;
+    phone: string;
+    note: string;
+  }) => Promise<void>;
+  deleteStore: (id: string) => Promise<void>;
   upsertOrder: (input: {
     date: string;
     buyerId: string;
@@ -129,9 +142,15 @@ type AppState = AppDb & {
   savePickupRecord: (input: PickupInput) => Promise<void>;
   addPickupPayment: (
     recordId: string,
-    input: { date: string; amount: number; method: string; note: string },
+    input: {
+      date: string;
+      amount: number;
+      method: string;
+      note: string;
+      proofPhotos?: PhotoInput[];
+    },
   ) => Promise<void>;
-  deletePickupPayment: (recordId: string, paymentId: string) => Promise<void>;
+  voidPickupPayment: (recordId: string, paymentId: string) => Promise<void>;
   deletePickupRecord: (id: string) => Promise<void>;
   savePackRecord: (input: PackInput) => Promise<void>;
   deletePackRecord: (id: string) => Promise<void>;
@@ -180,6 +199,7 @@ function toState(db: AppDb) {
     groups: db.groups,
     ingredients: db.ingredients.map((item) => normalizeIngredient(item)),
     buyers: db.buyers,
+    stores: db.stores ?? [],
     orders: db.orders,
     templates: db.templates,
     pickupRecords: (db.pickupRecords ?? []).map(normalizePickupRecord),
@@ -360,6 +380,7 @@ export const useAppStore = create<AppState>((set, get) => {
     groups: [],
     ingredients: [],
     buyers: [],
+    stores: [],
     orders: [],
     templates: [],
     pickupRecords: [],
@@ -564,6 +585,46 @@ export const useAppStore = create<AppState>((set, get) => {
       await mutate(() => deleteRecord("buyers", id));
     },
 
+    saveStore: async ({
+      id,
+      name,
+      settlementType,
+      settlementDay,
+      dueDays,
+      contact,
+      phone,
+      note,
+    }) => {
+      const stores = get().stores;
+      const existing = id ? stores.find((item) => item.id === id) : undefined;
+      const nextName = name.trim();
+      if (
+        stores.some(
+          (item) =>
+            item.id !== existing?.id &&
+            item.name.trim().toLowerCase() === nextName.toLowerCase(),
+        )
+      ) {
+        throw new Error("store-name-taken");
+      }
+      const next: Store = {
+        id: existing?.id ?? newId("store"),
+        name: nextName,
+        settlementType,
+        settlementDay,
+        dueDays,
+        contact: contact.trim(),
+        phone: phone.trim(),
+        note: note.trim(),
+        sort: existing?.sort ?? (stores.length ? Math.max(...stores.map((item) => item.sort)) + 1 : 0),
+      };
+      await mutate(() => apiSaveStore(next));
+    },
+
+    deleteStore: async (id) => {
+      await mutate(() => deleteRecord("stores", id));
+    },
+
     upsertOrder: async ({ date, buyerId, items }) => {
       const cleaned = items.filter((item) => item.quantity > 0);
       const orders = get().orders;
@@ -672,12 +733,14 @@ export const useAppStore = create<AppState>((set, get) => {
         throw new Error("payment-over-amount");
       }
       const user = useAuthStore.getState().user;
+      const proofPhotos = await uploadPhotoInputs(input.proofPhotos ?? []);
       const payment: PickupPayment = {
         id: `payment-${crypto.randomUUID()}`,
         date: input.date,
         amount,
         method: input.method.trim(),
         note: input.note.trim(),
+        proofPhotos,
         createdBy: user?.id ?? "local",
         createdByName: user?.username ?? "local",
         createdAt: Date.now(),
@@ -691,16 +754,25 @@ export const useAppStore = create<AppState>((set, get) => {
       );
     },
 
-    deletePickupPayment: async (recordId, paymentId) => {
+    voidPickupPayment: async (recordId, paymentId) => {
       const existing = get().pickupRecords.find((item) => item.id === recordId);
       if (!existing) throw new Error("pickup-not-found");
+      const user = useAuthStore.getState().user;
+      const now = Date.now();
       await mutate(() =>
         apiSavePickupRecord({
           ...existing,
-          payments: existing.payments.filter(
-            (payment) => payment.id !== paymentId,
+          payments: existing.payments.map((payment) =>
+            payment.id === paymentId
+              ? {
+                  ...payment,
+                  voidedAt: now,
+                  voidedBy: user?.id ?? "local",
+                  voidedByName: user?.username ?? "local",
+                }
+              : payment,
           ),
-          updatedAt: Date.now(),
+          updatedAt: now,
         }),
       );
     },

@@ -13,6 +13,7 @@ import type {
   PurgePreview,
   PurgeResult,
   StorageStats,
+  Store,
 } from "../types";
 import * as httpDb from "../api/httpDb";
 import { normalizeDb } from "./normalizeDb";
@@ -36,6 +37,7 @@ type EntityCollectionKey =
   | "groups"
   | "ingredients"
   | "buyers"
+  | "stores"
   | "orders"
   | "templates";
 
@@ -136,6 +138,11 @@ export async function saveBuyer(buyer: Buyer) {
   return kind === "files" ? httpDb.saveBuyer(buyer) : mutateLocal("buyers", buyer);
 }
 
+export async function saveStore(store: Store) {
+  await initStorage();
+  return kind === "files" ? httpDb.saveStore(store) : mutateLocal("stores", store);
+}
+
 export async function saveOrder(order: Order) {
   await initStorage();
   return kind === "files" ? httpDb.saveOrder(order) : mutateLocal("orders", order);
@@ -207,7 +214,10 @@ export async function deletePackRecord(id: string) {
   return next;
 }
 
-export async function deleteRecord(key: EntityCollectionKey, id: string) {
+export async function deleteRecord(
+  key: EntityCollectionKey | "stores",
+  id: string,
+) {
   await initStorage();
   return kind === "files" ? httpDb.deleteRecord(key, id) : removeLocal(key, id);
 }
