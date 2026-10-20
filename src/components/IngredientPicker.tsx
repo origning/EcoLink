@@ -129,7 +129,7 @@ export function IngredientPicker({
         <select
           value={groupId}
           onChange={(e) => setGroupId(e.target.value)}
-          className="min-h-11 w-full rounded-2xl border border-[var(--line)] bg-[var(--bg)] px-3 py-2.5 text-base"
+          className="min-h-10 w-full rounded-[10px] border border-[var(--line)] bg-white px-3 py-2 text-base text-[var(--ink)] sm:text-sm"
         >
           <option value="all">{t("orders.allGroups")}</option>
           {tops.map((top) => (

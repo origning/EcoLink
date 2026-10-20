@@ -286,16 +286,16 @@ export function InvoicesPage() {
             />
           </Field>
 
-          <div className="flex rounded-full bg-[var(--bg)] p-1">
+          <div className="inline-flex w-fit rounded-[9px] border border-[var(--line)] bg-[var(--surface)] p-0.5">
             {(["single", "range"] as const).map((item) => (
               <button
                 key={item}
                 type="button"
                 onClick={() => setMode(item)}
-                className={`min-h-10 flex-1 rounded-full py-1.5 text-sm font-medium ${
+                className={`min-h-8 rounded-[7px] px-4 py-1 text-xs font-semibold transition ${
                   mode === item
-                    ? "bg-[var(--brand)] text-white"
-                    : "text-[var(--muted)]"
+                    ? "bg-[var(--ink)] text-white shadow-[var(--shadow-xs)]"
+                    : "text-[var(--muted)] hover:text-[var(--ink)]"
                 }`}
               >
                 {t(`summary.${item}`)}

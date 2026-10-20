@@ -1,15 +1,58 @@
 import type { InputHTMLAttributes, ReactNode, TextareaHTMLAttributes } from "react";
 
+export function BrandMark({
+  size = 34,
+  className = "",
+}: {
+  size?: number;
+  className?: string;
+}) {
+  return (
+    <span
+      aria-hidden
+      className={`inline-grid shrink-0 place-items-center rounded-[11px] text-white shadow-[0_8px_16px_-8px_rgba(194,65,12,0.6),inset_0_1px_0_rgba(255,255,255,0.24)] ${className}`}
+      style={{
+        width: size,
+        height: size,
+        background: "linear-gradient(140deg,#fb923c,#ea580c 55%,#c2410c)",
+      }}
+    >
+      <svg
+        width={Math.round(size * 0.56)}
+        height={Math.round(size * 0.56)}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M10 13.5a4 4 0 0 0 5.7 0l2.8-2.8a4 4 0 0 0-5.7-5.7L11.2 6.6" />
+        <path d="M14 10.5a4 4 0 0 0-5.7 0l-2.8 2.8a4 4 0 0 0 5.7 5.7l1.6-1.6" />
+      </svg>
+    </span>
+  );
+}
+
 export function PageTitle({
   title,
+  subtitle,
   action,
 }: {
   title: string;
+  subtitle?: string;
   action?: ReactNode;
 }) {
   return (
-    <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-      <h2 className="min-w-0 text-lg font-semibold sm:text-xl">{title}</h2>
+    <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+      <div className="min-w-0">
+        <h2 className="truncate text-[22px] font-bold tracking-tight sm:text-[24px]">
+          {title}
+        </h2>
+        {subtitle ? (
+          <p className="mt-1 text-xs text-[var(--muted)]">{subtitle}</p>
+        ) : null}
+      </div>
       {action}
     </div>
   );
@@ -33,7 +76,7 @@ export function PrimaryButton({
       type={type}
       onClick={onClick}
       disabled={disabled}
-      className={`min-h-11 rounded-full bg-[var(--brand)] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 ${className}`}
+      className={`ui-primary inline-flex min-h-10 items-center justify-center gap-1.5 whitespace-nowrap rounded-[10px] px-4 py-2 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
     >
       {children}
     </button>
@@ -58,8 +101,10 @@ export function GhostButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`min-h-10 rounded-full px-3 py-1.5 text-sm font-medium disabled:opacity-50 ${
-        danger ? "text-[var(--danger)]" : "text-[var(--brand)]"
+      className={`inline-flex min-h-9 items-center justify-center gap-1 whitespace-nowrap rounded-[10px] border border-transparent px-3 py-1.5 text-sm font-medium transition hover:bg-[var(--surface)] active:scale-[0.99] disabled:opacity-50 ${
+        danger
+          ? "text-[var(--danger)] hover:bg-red-50"
+          : "text-[var(--ink)]"
       } ${className}`}
     >
       {children}
@@ -67,9 +112,17 @@ export function GhostButton({
   );
 }
 
-export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
+export function Card({
+  children,
+  className = "",
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
   return (
-    <div className={`rounded-3xl bg-white p-4 shadow-sm ring-1 ring-[var(--line)] ${className}`}>
+    <div
+      className={`rounded-[20px] border border-[var(--line)] bg-[var(--card)] p-4 shadow-[var(--shadow-sm)] ${className}`}
+    >
       {children}
     </div>
   );
@@ -86,10 +139,10 @@ export function Field({
 }) {
   return (
     <label className="block space-y-1.5">
-      <span className="text-sm font-medium text-[var(--muted)]">
-        {label}
+      <span className="flex items-baseline justify-between gap-2 text-xs font-semibold text-[var(--muted)]">
+        <span>{label}</span>
         {hint ? (
-          <span className="ml-1 text-xs font-normal text-[var(--muted)] opacity-70">
+          <span className="text-[10px] font-normal text-[var(--muted-2)]">
             {hint}
           </span>
         ) : null}
@@ -103,7 +156,7 @@ export function TextInput(props: InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
       {...props}
-      className={`min-h-11 rounded-2xl border border-[var(--line)] bg-[var(--bg)] px-3 py-2.5 text-base outline-none focus:border-[var(--brand)] ${props.className ?? "w-full"}`}
+      className={`min-h-10 rounded-[10px] border border-[var(--line)] bg-white px-3 py-2 text-base text-[var(--ink)] outline-none placeholder:text-[var(--muted-2)] sm:text-sm ${props.className ?? "w-full"}`}
     />
   );
 }
@@ -112,7 +165,7 @@ export function TextArea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return (
     <textarea
       {...props}
-      className={`min-h-20 w-full rounded-2xl border border-[var(--line)] bg-[var(--bg)] px-3 py-2.5 text-base outline-none focus:border-[var(--brand)] ${props.className ?? ""}`}
+      className={`min-h-20 w-full rounded-[10px] border border-[var(--line)] bg-white px-3 py-2.5 text-base text-[var(--ink)] outline-none placeholder:text-[var(--muted-2)] sm:text-sm ${props.className ?? ""}`}
     />
   );
 }
@@ -130,18 +183,30 @@ export function SearchInput({
 }) {
   return (
     <div className="relative">
+      <svg
+        aria-hidden
+        className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-2)]"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+      >
+        <circle cx="11" cy="11" r="6.5" />
+        <path d="m16 16 4 4" />
+      </svg>
       <TextInput
         value={value}
         placeholder={placeholder}
         onChange={(event) => onValueChange(event.target.value)}
-        className="w-full pr-11"
+        className="w-full pl-9 pr-11"
       />
       {value ? (
         <button
           type="button"
           aria-label={clearLabel ?? "clear"}
           onClick={() => onValueChange("")}
-          className="absolute right-1.5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-lg text-[var(--muted)] hover:bg-[var(--bg)]"
+          className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-base text-[var(--muted)] transition hover:bg-[var(--surface)] hover:text-[var(--ink)]"
         >
           ×
         </button>
@@ -152,9 +217,26 @@ export function SearchInput({
 
 export function EmptyState({ text }: { text: string }) {
   return (
-    <Card>
-      <p className="py-8 text-center text-sm text-[var(--muted)]">{text}</p>
-    </Card>
+    <div className="rounded-[20px] border border-dashed border-[var(--line-strong)] bg-[var(--surface)] px-4 py-10">
+      <div className="flex flex-col items-center gap-3 text-center">
+        <span className="grid h-11 w-11 place-items-center rounded-full bg-white text-[var(--muted-2)] ring-1 ring-[var(--line)]">
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M5 8.5 12 4l7 4.5v7L12 20l-7-4.5v-7Z" />
+            <path d="M5 8.5 12 13l7-4.5M12 13v7" />
+          </svg>
+        </span>
+        <p className="max-w-sm text-sm text-[var(--muted)]">{text}</p>
+      </div>
+    </div>
   );
 }
 
@@ -168,20 +250,24 @@ export function Sheet({
   onClose: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/35 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:items-center">
-      <div className="max-h-[min(88dvh,calc(100dvh-env(safe-area-inset-top)-1rem))] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-4 shadow-xl sm:max-w-xl lg:max-w-2xl lg:p-6">
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-lg font-semibold">{title}</h3>
+    <div className="backdrop-in fixed inset-0 z-40 flex items-end justify-center bg-black/40 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur-[2px] sm:items-center sm:p-4">
+      <div className="sheet-in flex max-h-[min(90dvh,calc(100dvh-env(safe-area-inset-top)-1rem))] w-full max-w-lg flex-col overflow-hidden rounded-[24px] bg-white shadow-[0_32px_80px_-24px_rgba(23,23,23,0.45)] sm:max-w-xl lg:max-w-2xl">
+        <span
+          aria-hidden
+          className="mx-auto mt-2 block h-1 w-10 shrink-0 rounded-full bg-[var(--line-strong)] sm:hidden"
+        />
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--line)] px-4 py-3 sm:px-5">
+          <h3 className="truncate text-base font-semibold">{title}</h3>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full px-2 text-xl leading-none text-[var(--muted)]"
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-lg leading-none text-[var(--muted)] transition hover:bg-[var(--surface)] hover:text-[var(--ink)]"
             aria-label="close"
           >
             ×
           </button>
         </div>
-        {children}
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">{children}</div>
       </div>
     </div>
   );
@@ -198,13 +284,13 @@ export function Thumb({
 }) {
   return (
     <div
-      className="overflow-hidden rounded-2xl bg-[var(--brand-soft)]"
+      className="shrink-0 overflow-hidden rounded-[10px] bg-[var(--surface)] ring-1 ring-[var(--line)]"
       style={{ width: size, height: size }}
     >
       {src ? (
         <img src={src} alt={alt} className="h-full w-full object-cover" />
       ) : (
-        <div className="flex h-full w-full items-center justify-center text-[10px] text-[var(--brand)]">
+        <div className="flex h-full w-full items-center justify-center text-[10px] text-[var(--muted-2)]">
           —
         </div>
       )}

@@ -359,7 +359,7 @@ export function DataPage() {
                   flash({ type: "error", message: String(error) }),
                 );
             }}
-            className="min-h-11 w-full rounded-2xl border border-[var(--line)] bg-[var(--bg)] px-3 py-2.5 text-base"
+            className="min-h-10 w-full rounded-[10px] border border-[var(--line)] bg-white px-3 py-2 text-base text-[var(--ink)] sm:text-sm"
           >
             {FONT_OPTIONS.map((font) => (
               <option key={font} value={font}>
@@ -378,7 +378,7 @@ export function DataPage() {
                   flash({ type: "error", message: String(error) }),
                 );
             }}
-            className="min-h-11 w-full rounded-2xl border border-[var(--line)] bg-[var(--bg)] px-3 py-2.5 text-base"
+            className="min-h-10 w-full rounded-[10px] border border-[var(--line)] bg-white px-3 py-2 text-base text-[var(--ink)] sm:text-sm"
           >
             {FONT_SIZE_OPTIONS.map((size) => (
               <option key={size} value={size}>
@@ -1033,7 +1033,7 @@ function UsersSheet({ onClose }: { onClose: () => void }) {
             <select
               value={role}
               onChange={(event) => setRole(event.target.value as UserRole)}
-              className="min-h-11 flex-1 rounded-2xl border border-[var(--line)] bg-[var(--bg)] px-3 py-2.5 text-base"
+              className="min-h-10 flex-1 rounded-[10px] border border-[var(--line)] bg-white px-3 py-2 text-base text-[var(--ink)] sm:text-sm"
             >
               {ROLE_OPTIONS.map((item) => (
                 <option key={item} value={item}>

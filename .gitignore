@@ -19,3 +19,4 @@ android/capacitor-cordova-android-plugins
 ios/App/Pods
 ios/App/build
 ios/DerivedData
+backups/*.zip

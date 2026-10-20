@@ -10,14 +10,38 @@
     ui-sans-serif,
     system-ui,
     sans-serif;
-  --bg: #f3f6f2;
-  --ink: #1c2b22;
-  --muted: #5d6f64;
-  --line: #d7e2d8;
+
+  /* 石墨黑 + 橙色 */
+  --bg: #f4f4f2;
+  --bg-2: #f1f1ee;
+  --ink: #171717;
+  --muted: #737373;
+  --muted-2: #a3a3a3;
+  --line: #e7e5e4;
+  --line-strong: #d6d3d1;
   --card: #ffffff;
-  --brand: #1b7a4e;
-  --brand-soft: #e8f5ee;
-  --danger: #b42318;
+  --surface: #fafaf9;
+  --brand: #ea580c;
+  --brand-2: #f97316;
+  --brand-ink: #9a3412;
+  --brand-soft: #fff4ed;
+  --brand-soft-2: #fffaf6;
+  --dark: #171717;
+  --dark-2: #262626;
+  --danger: #dc2626;
+
+  --shadow-xs: 0 1px 2px rgba(23, 23, 23, 0.04);
+  --shadow-sm:
+    0 1px 2px rgba(23, 23, 23, 0.04),
+    0 6px 16px -12px rgba(23, 23, 23, 0.14);
+  --shadow-md:
+    0 2px 4px rgba(23, 23, 23, 0.03),
+    0 20px 40px -26px rgba(23, 23, 23, 0.22);
+  --shadow-lg: 0 34px 80px -40px rgba(23, 23, 23, 0.4);
+
+  --radius-card: 20px;
+  --radius-md: 14px;
+  --radius-sm: 10px;
 }
 
 html {
@@ -29,7 +53,7 @@ html,
 body,
 #root {
   min-height: 100%;
-  background: var(--bg);
+  background-color: var(--bg);
   color: var(--ink);
 }
 
@@ -37,6 +61,15 @@ body {
   margin: 0;
   overscroll-behavior: none;
   -webkit-tap-highlight-color: transparent;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "tnum" 1;
+  background-image:
+    radial-gradient(900px 460px at 100% -8%, rgba(249, 115, 22, 0.08), transparent 60%),
+    radial-gradient(760px 420px at -10% 20%, rgba(23, 23, 23, 0.045), transparent 55%),
+    linear-gradient(180deg, #f7f7f5 0%, #f1f1ee 100%);
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  background-attachment: fixed;
 }
 
 button,
@@ -46,6 +79,210 @@ select,
 textarea {
   font: inherit;
   touch-action: manipulation;
+}
+
+h1,
+h2,
+h3 {
+  letter-spacing: -0.025em;
+}
+
+::selection {
+  background: rgba(249, 115, 22, 0.22);
+  color: var(--ink);
+}
+
+:where(button, a, [role="button"], summary):focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--brand) 60%, white);
+  outline-offset: 2px;
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
+select,
+textarea {
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    background-color 0.16s ease;
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]):focus,
+select:focus,
+textarea:focus {
+  border-color: color-mix(in srgb, var(--brand) 55%, transparent);
+  box-shadow: 0 0 0 3px rgba(234, 88, 12, 0.11);
+}
+
+::placeholder {
+  color: color-mix(in srgb, var(--muted) 60%, white);
+}
+
+select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23737373' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.65rem center;
+  background-size: 0.85rem;
+  padding-right: 2rem;
+}
+
+input[type="date"],
+input[type="number"] {
+  color-scheme: light;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  opacity: 0.55;
+  cursor: pointer;
+}
+
+/* 深色订单摘要里的表单 */
+.summary-field select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-opacity='0.55' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.55rem center;
+  background-size: 0.75rem;
+  padding-right: 1.6rem;
+}
+
+.summary-field select option {
+  color: #171717;
+}
+
+.summary-field input[type="date"] {
+  color-scheme: dark;
+  cursor: pointer;
+}
+
+.summary-field select:focus,
+.summary-field input:focus {
+  border-color: rgba(255, 255, 255, 0.36);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.1);
+}
+
+/* ---------- 滚动条 ---------- */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #cfcdca transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d3d1ce;
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #b8b5b1;
+  background-clip: content-box;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+/* ---------- 动效 ---------- */
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.page-in {
+  animation: page-in 0.28s ease-out both;
+}
+
+.backdrop-in {
+  animation: backdrop-in 0.18s ease-out both;
+}
+
+.sheet-in {
+  animation: sheet-in 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.toast-in {
+  animation: toast-in 0.22s ease-out both;
+}
+
+.ui-primary {
+  background-image: linear-gradient(135deg, #f97316 0%, #ea580c 60%, #c2410c 100%);
+  box-shadow:
+    0 10px 20px -12px rgba(234, 88, 12, 0.7),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+.ui-primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.03);
+  box-shadow:
+    0 14px 24px -12px rgba(234, 88, 12, 0.75),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+.ui-primary:active:not(:disabled) {
+  transform: translateY(0) scale(0.99);
+}
+
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 .sr-only {
@@ -58,17 +295,4 @@ textarea {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
-}
-
-input[type="date"],
-input[type="number"] {
-  color-scheme: light;
-}
-
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
-}
-
-.no-scrollbar {
-  scrollbar-width: none;
 }

@@ -203,14 +203,16 @@ export function SummaryPage() {
       <PageTitle title={t("summary.title")} />
 
       <Card className="mb-4 space-y-3">
-        <div className="flex rounded-full bg-[var(--bg)] p-1">
+        <div className="inline-flex w-fit rounded-[9px] border border-[var(--line)] bg-[var(--surface)] p-0.5">
           {(["single", "range"] as const).map((item) => (
             <button
               key={item}
               type="button"
               onClick={() => setMode(item)}
-              className={`min-h-10 flex-1 rounded-full py-1.5 text-sm font-medium ${
-                mode === item ? "bg-[var(--brand)] text-white" : "text-[var(--muted)]"
+              className={`min-h-8 rounded-[7px] px-4 py-1 text-xs font-semibold transition ${
+                mode === item
+                  ? "bg-[var(--ink)] text-white shadow-[var(--shadow-xs)]"
+                  : "text-[var(--muted)] hover:text-[var(--ink)]"
               }`}
             >
               {t(`summary.${item}`)}
@@ -342,7 +344,7 @@ export function BuyerMultiSelect({
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className="flex min-h-11 w-full items-center justify-between gap-2 rounded-2xl border border-[var(--line)] bg-[var(--bg)] px-3 py-2.5 text-left text-base"
+        className="flex min-h-10 w-full items-center justify-between gap-2 rounded-[10px] border border-[var(--line)] bg-white px-3 py-2 text-left text-base text-[var(--ink)] sm:text-sm"
       >
         <span className={`min-w-0 truncate ${names.length ? "" : "text-[var(--muted)]"}`}>
           {summary}
@@ -479,19 +481,19 @@ function SummaryTables({
           </Card>
         ))}
       </div>
-      <div className="hidden overflow-x-auto rounded-3xl bg-white ring-1 ring-[var(--line)] md:block">
+      <div className="hidden overflow-x-auto rounded-[20px] border border-[var(--line)] bg-white shadow-[var(--shadow-sm)] md:block">
         <table className="min-w-full border-collapse text-sm">
           <thead>
-            <tr className="bg-[var(--brand)] text-white">
-              <th className="sticky left-0 z-10 bg-[var(--brand)] px-3 py-2 text-left font-semibold">
+            <tr className="bg-[var(--surface)] text-[var(--muted)] [&>th]:text-[10.5px] [&>th]:uppercase [&>th]:tracking-[0.08em]">
+              <th className="sticky left-0 z-10 bg-[var(--surface)] px-3 py-2.5 text-left font-semibold">
                 {t("summary.nameEn")}
               </th>
               {matrix.buyers.map((buyer) => (
-                <th key={buyer.id} className="px-3 py-2 font-semibold">
+                <th key={buyer.id} className="px-3 py-2.5 font-semibold">
                   {buyer.name || deletedLabel}
                 </th>
               ))}
-              <th className="px-3 py-2 font-semibold">{t("common.total")}</th>
+              <th className="px-3 py-2.5 font-semibold">{t("common.total")}</th>
             </tr>
           </thead>
           <tbody>
