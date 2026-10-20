@@ -7,7 +7,9 @@ import type {
   InvoiceSnapshot,
   PackRecord,
   PhotoRef,
+  PickupPayment,
   PickupRecord,
+  Store,
 } from "../types";
 
 export function todayIso() {
@@ -49,6 +51,29 @@ export function normalizeIngredient(
     price: Number(item.price) > 0 ? Number(item.price) : 0,
     hasImage: Boolean(item.hasImage),
     imageRev: item.imageRev ?? 0,
+  };
+}
+
+export function normalizeStore(
+  item: Partial<Store> & Pick<Store, "id">,
+): Store {
+  const settlementType =
+    item.settlementType === "monthly" || item.settlementType === "custom"
+      ? item.settlementType
+      : "immediate";
+  return {
+    id: item.id,
+    name: (item.name ?? "").trim(),
+    settlementType,
+    settlementDay:
+      Number(item.settlementDay) >= 1 && Number(item.settlementDay) <= 31
+        ? Math.round(Number(item.settlementDay))
+        : 31,
+    dueDays: Number(item.dueDays) > 0 ? Math.round(Number(item.dueDays)) : 0,
+    contact: (item.contact ?? "").trim(),
+    phone: (item.phone ?? "").trim(),
+    note: (item.note ?? "").trim(),
+    sort: Number(item.sort) || 0,
   };
 }
 
@@ -130,6 +155,37 @@ function normalizePhotoRefs(
   return [];
 }
 
+export function normalizePickupPayments(value: unknown): PickupPayment[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry, index) => {
+    if (!entry || typeof entry !== "object") return [];
+    const item = entry as Partial<PickupPayment>;
+    const amount = number(item.amount);
+    if (amount <= 0) return [];
+    return [
+      {
+        id: text(item.id) || `payment-${index}-${number(item.createdAt)}`,
+        date: text(item.date),
+        amount,
+        method: text(item.method),
+        note: text(item.note),
+        proofPhotos: normalizePhotoRefs(
+          item.proofPhotos,
+          `${text(item.id) || `payment-${index}`}-proof`,
+          false,
+          0,
+        ),
+        createdBy: text(item.createdBy, "local"),
+        createdByName: text(item.createdByName, "local"),
+        createdAt: number(item.createdAt),
+        voidedAt: item.voidedAt ? number(item.voidedAt) : undefined,
+        voidedBy: text(item.voidedBy) || undefined,
+        voidedByName: text(item.voidedByName) || undefined,
+      },
+    ];
+  });
+}
+
 export function normalizePickupRecord(
   item: Partial<PickupRecord> &
     Pick<PickupRecord, "id"> &
@@ -155,6 +211,7 @@ export function normalizePickupRecord(
       item.invoiceHasPhoto,
       item.invoicePhotoRev,
     ),
+    payments: normalizePickupPayments(item.payments),
     createdBy: text(item.createdBy, "local"),
     createdByName: text(item.createdByName, "local"),
     createdAt: number(item.createdAt),

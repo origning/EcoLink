@@ -5,6 +5,7 @@ import { AppShell } from "./components/AppShell";
 import { RequireRole } from "./components/RequireRole";
 import { BuyersPage } from "./pages/BuyersPage";
 import { DataPage } from "./pages/DataPage";
+import { ExpensesPage } from "./pages/ExpensesPage";
 import { IngredientsPage } from "./pages/IngredientsPage";
 import { InvoicesPage } from "./pages/InvoicesPage";
 import { LoginPage } from "./pages/LoginPage";
@@ -112,6 +113,14 @@ export default function App() {
             element={
               <RequireRole roles={["admin", "summarizer"]}>
                 <InvoicesPage />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/expenses"
+            element={
+              <RequireRole roles={["admin"]}>
+                <ExpensesPage />
               </RequireRole>
             }
           />

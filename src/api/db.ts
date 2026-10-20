@@ -23,6 +23,7 @@ export {
   savePackRecord,
   savePickupRecord,
   saveSettings,
+  saveStore,
   saveTemplate,
 } from "../storage";
 export type { StorageKind } from "../storage";

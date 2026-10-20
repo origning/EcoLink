@@ -5,6 +5,7 @@ import {
   normalizeInvoiceRecord,
   normalizePackRecord,
   normalizePickupRecord,
+  normalizeStore,
 } from "../utils/format";
 import {
   createDefaultDb,
@@ -74,6 +75,7 @@ export function normalizeDb(input: Partial<AppDb> | undefined): AppDb {
     groups,
     ingredients,
     buyers: (Array.isArray(input?.buyers) ? input.buyers : []).map(normalizeBuyer),
+    stores: (Array.isArray(input?.stores) ? input.stores : []).map(normalizeStore),
     orders: Array.isArray(input?.orders) ? input.orders : [],
     templates: Array.isArray(input?.templates) ? input.templates : [],
     pickupRecords: (Array.isArray(input?.pickupRecords) ? input.pickupRecords : []).map(
