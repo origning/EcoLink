@@ -23,7 +23,10 @@ import {
   normalizeInvoice,
 } from "../src/storage/defaultDb";
 import { normalizeDb } from "../src/storage/normalizeDb";
-import { normalizeInvoiceRecord } from "../src/utils/format";
+import {
+  normalizeInvoiceRecord,
+  normalizePickupPayments,
+} from "../src/utils/format";
 import type { AuthStore } from "./authStore";
 import {
   SESSION_TTL_MS,
@@ -770,6 +773,9 @@ export function createFileStore(
           buyerId: text(body.buyerId) || undefined,
           photos,
           invoicePhotos,
+          payments: normalizePickupPayments(
+            body.payments ?? (existing as PickupRecord | undefined)?.payments,
+          ),
           createdBy: existing?.createdBy ?? user?.id ?? "local",
           createdByName: existing?.createdByName ?? user?.username ?? "local",
           createdAt: existing?.createdAt ?? now,

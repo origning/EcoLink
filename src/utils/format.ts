@@ -7,6 +7,7 @@ import type {
   InvoiceSnapshot,
   PackRecord,
   PhotoRef,
+  PickupPayment,
   PickupRecord,
 } from "../types";
 
@@ -130,6 +131,28 @@ function normalizePhotoRefs(
   return [];
 }
 
+export function normalizePickupPayments(value: unknown): PickupPayment[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry, index) => {
+    if (!entry || typeof entry !== "object") return [];
+    const item = entry as Partial<PickupPayment>;
+    const amount = number(item.amount);
+    if (amount <= 0) return [];
+    return [
+      {
+        id: text(item.id) || `payment-${index}-${number(item.createdAt)}`,
+        date: text(item.date),
+        amount,
+        method: text(item.method),
+        note: text(item.note),
+        createdBy: text(item.createdBy, "local"),
+        createdByName: text(item.createdByName, "local"),
+        createdAt: number(item.createdAt),
+      },
+    ];
+  });
+}
+
 export function normalizePickupRecord(
   item: Partial<PickupRecord> &
     Pick<PickupRecord, "id"> &
@@ -155,6 +178,7 @@ export function normalizePickupRecord(
       item.invoiceHasPhoto,
       item.invoicePhotoRev,
     ),
+    payments: normalizePickupPayments(item.payments),
     createdBy: text(item.createdBy, "local"),
     createdByName: text(item.createdByName, "local"),
     createdAt: number(item.createdAt),

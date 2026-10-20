@@ -38,6 +38,7 @@ import type {
   OrderTemplate,
   OrderTemplateKind,
   PackRecord,
+  PickupPayment,
   PickupRecord,
   PurgeResult,
   SummaryMatrix,
@@ -126,6 +127,11 @@ type AppState = AppDb & {
   }) => Promise<void>;
   deleteTemplate: (id: string) => Promise<void>;
   savePickupRecord: (input: PickupInput) => Promise<void>;
+  addPickupPayment: (
+    recordId: string,
+    input: { date: string; amount: number; method: string; note: string },
+  ) => Promise<void>;
+  deletePickupPayment: (recordId: string, paymentId: string) => Promise<void>;
   deletePickupRecord: (id: string) => Promise<void>;
   savePackRecord: (input: PackInput) => Promise<void>;
   deletePackRecord: (id: string) => Promise<void>;
@@ -609,16 +615,23 @@ export const useAppStore = create<AppState>((set, get) => {
       const invoicePhotos = await uploadPhotoInputs(input.invoicePhotos);
       const user = useAuthStore.getState().user;
       const now = Date.now();
+      const amount = Number(input.amount) > 0 ? Number(input.amount) : 0;
+      const paid = (existing?.payments ?? []).reduce(
+        (sum, payment) => sum + payment.amount,
+        0,
+      );
+      if (paid > amount) throw new Error("amount-below-paid");
       const record: PickupRecord = {
         id,
         date: input.date,
         storeName: input.storeName.trim(),
         tax: Number(input.tax) > 0 ? Number(input.tax) : 0,
-        amount: Number(input.amount) > 0 ? Number(input.amount) : 0,
+        amount,
         note: input.note.trim(),
         buyerId: input.buyerId || undefined,
         photos,
         invoicePhotos,
+        payments: existing?.payments ?? [],
         createdBy: existing?.createdBy ?? user?.id ?? "local",
         createdByName: existing?.createdByName ?? user?.username ?? "local",
         createdAt: existing?.createdAt ?? now,
@@ -643,7 +656,60 @@ export const useAppStore = create<AppState>((set, get) => {
       }
     },
 
+    addPickupPayment: async (recordId, input) => {
+      const existing = get().pickupRecords.find((item) => item.id === recordId);
+      if (!existing) throw new Error("pickup-not-found");
+      const paid = existing.payments.reduce(
+        (sum, payment) => sum + payment.amount,
+        0,
+      );
+      const outstanding = Math.max(0, existing.amount - paid);
+      const amount = Number(input.amount);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        throw new Error("invalid-payment-amount");
+      }
+      if (amount > outstanding + 0.0001) {
+        throw new Error("payment-over-amount");
+      }
+      const user = useAuthStore.getState().user;
+      const payment: PickupPayment = {
+        id: `payment-${crypto.randomUUID()}`,
+        date: input.date,
+        amount,
+        method: input.method.trim(),
+        note: input.note.trim(),
+        createdBy: user?.id ?? "local",
+        createdByName: user?.username ?? "local",
+        createdAt: Date.now(),
+      };
+      await mutate(() =>
+        apiSavePickupRecord({
+          ...existing,
+          payments: [...existing.payments, payment],
+          updatedAt: Date.now(),
+        }),
+      );
+    },
+
+    deletePickupPayment: async (recordId, paymentId) => {
+      const existing = get().pickupRecords.find((item) => item.id === recordId);
+      if (!existing) throw new Error("pickup-not-found");
+      await mutate(() =>
+        apiSavePickupRecord({
+          ...existing,
+          payments: existing.payments.filter(
+            (payment) => payment.id !== paymentId,
+          ),
+          updatedAt: Date.now(),
+        }),
+      );
+    },
+
     deletePickupRecord: async (id) => {
+      const existing = get().pickupRecords.find((item) => item.id === id);
+      if (existing && existing.payments.length > 0) {
+        throw new Error("pickup-has-payments");
+      }
       await mutate(() => apiDeletePickupRecord(id));
     },
 

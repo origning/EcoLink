@@ -84,6 +84,18 @@ export type PhotoRef = {
   rev: number;
 };
 
+/** 拣货记录的一笔付款 */
+export type PickupPayment = {
+  id: string;
+  date: string;
+  amount: number;
+  method: string;
+  note: string;
+  createdBy: string;
+  createdByName: string;
+  createdAt: number;
+};
+
 /** 取货员记录：多张取货照片、发票照片、税、金额、取货店名 */
 export type PickupRecord = {
   id: string;
@@ -95,6 +107,8 @@ export type PickupRecord = {
   buyerId?: string;
   photos: PhotoRef[];
   invoicePhotos: PhotoRef[];
+  /** 已登记的付款；为空或未定义表示未付款 */
+  payments: PickupPayment[];
   createdBy: string;
   createdByName: string;
   createdAt: number;
