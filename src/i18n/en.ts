@@ -47,6 +47,7 @@ export const en = {
     pickups: "Pickups",
     packing: "Dispatch",
     invoices: "Invoices",
+    income: "Income",
     expenses: "Expenses",
     summary: "Summary",
     data: "Data",
@@ -346,6 +347,13 @@ export const en = {
     createdBy: "Entered by: {{name}}",
     tooLarge: "The photo is still too large after compression. Choose a smaller one.",
     unsupported: "Only jpg, png, and webp images are supported",
+  },
+  income: {
+    title: "Income summary",
+    allCustomers: "All customers",
+    invoiceList: "Invoices and receipts",
+    count: "{{count}} invoices",
+    empty: "No invoices match the filters",
   },
   expenses: {
     title: "Expense summary",

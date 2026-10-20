@@ -45,20 +45,14 @@ export function PackingPage() {
   const invoices = useAppStore((s) => s.invoiceRecords);
   const saveRecord = useAppStore((s) => s.savePackRecord);
   const deleteRecord = useAppStore((s) => s.deletePackRecord);
-  const addInvoicePayment = useAppStore((s) => s.addInvoicePayment);
-  const voidInvoicePayment = useAppStore((s) => s.voidInvoicePayment);
   const flash = useAppStore((s) => s.flash);
   const user = useAuthStore((s) => s.user);
   const [editing, setEditing] = useState<PackRecord | "new" | null>(null);
-  const [receiptTarget, setReceiptTarget] = useState<InvoiceRecord | null>(null);
   const [mode, setMode] = useState<"single" | "range">("range");
   const [day, setDay] = useState(todayIso());
   const [from, setFrom] = useState(monthStartIso());
   const [to, setTo] = useState(todayIso());
   const [keyword, setKeyword] = useState("");
-  const [incomeFilter, setIncomeFilter] = useState<
-    "all" | "pending" | "unpaid" | "partial" | "paid" | "overdue"
-  >("all");
   const today = todayIso();
 
   const invoiceMap = useMemo(
@@ -78,24 +72,9 @@ export function PackingPage() {
     return records
       .filter((record) => {
         if (record.date < start || record.date > end) return false;
-        const linked = recordInvoices(record);
-        if (incomeFilter === "pending" && linked.length > 0) return false;
-        if (incomeFilter === "overdue") {
-          if (!linked.some((invoice) => invoiceIsOverdue(invoice, today))) {
-            return false;
-          }
-        } else if (incomeFilter !== "all" && incomeFilter !== "pending") {
-          if (
-            linked.length === 0 ||
-            !linked.some(
-              (invoice) => invoicePaymentStatus(invoice) === incomeFilter,
-            )
-          ) {
-            return false;
-          }
-        }
         if (!needle) return true;
         const buyer = buyers.find((item) => item.id === record.buyerId);
+        const linked = recordInvoices(record);
         return [
           record.logistics,
           record.trackingNo,
@@ -111,51 +90,7 @@ export function PackingPage() {
       })
       .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [records, buyers, invoices, start, end, keyword, incomeFilter, today]);
-
-  const income = useMemo(() => {
-    const unique = new Map<string, InvoiceRecord>();
-    let pendingInvoices = 0;
-    for (const record of filtered) {
-      const linked = recordInvoices(record);
-      if (linked.length === 0) pendingInvoices += 1;
-      for (const invoice of linked) unique.set(invoice.id, invoice);
-    }
-    const list = [...unique.values()];
-    const total = list.reduce(
-      (sum, invoice) => sum + invoice.snapshot.total,
-      0,
-    );
-    const paid = list.reduce(
-      (sum, invoice) => sum + invoicePaidAmount(invoice),
-      0,
-    );
-    const outstanding = list.reduce(
-      (sum, invoice) => sum + invoiceOutstanding(invoice),
-      0,
-    );
-    const overdue = list
-      .filter((invoice) => invoiceIsOverdue(invoice, today))
-      .reduce((sum, invoice) => sum + invoiceOutstanding(invoice), 0);
-    return {
-      invoices: list,
-      total,
-      paid,
-      outstanding,
-      overdue,
-      pendingInvoices,
-      pendingRecords: filtered.filter(
-        (record) => recordInvoices(record).length === 0,
-      ),
-      unpaidInvoices: list.filter(
-        (invoice) => invoiceOutstanding(invoice) > 0,
-      ),
-      overdueInvoices: list.filter((invoice) =>
-        invoiceIsOverdue(invoice, today),
-      ),
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtered, invoices, today]);
+  }, [records, buyers, invoices, start, end, keyword]);
 
   const canEdit = (record: PackRecord) =>
     user?.role === "admin" || record.createdBy === user?.id;
@@ -229,58 +164,6 @@ export function PackingPage() {
               placeholder={t("packing.searchPlaceholder")}
               clearLabel={t("common.clear")}
             />
-            <Field label={t("packing.incomeFilter")}>
-              <select
-                value={incomeFilter}
-                onChange={(event) =>
-                  setIncomeFilter(
-                    event.target.value as
-                      | "all"
-                      | "pending"
-                      | "unpaid"
-                      | "partial"
-                      | "paid"
-                      | "overdue",
-                  )
-                }
-                className="min-h-11 w-full rounded-2xl border border-[var(--line)] bg-[var(--bg)] px-3 py-2.5 text-base"
-              >
-                <option value="all">{t("packing.incomeAll")}</option>
-                <option value="pending">{t("packing.pendingInvoice")}</option>
-                <option value="unpaid">{t("pickups.statusUnpaid")}</option>
-                <option value="partial">{t("pickups.statusPartial")}</option>
-                <option value="paid">{t("pickups.statusPaid")}</option>
-                <option value="overdue">{t("pickups.statusOverdue")}</option>
-              </select>
-            </Field>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-              {[
-                { label: t("packing.invoiceAmount"), value: income.total },
-                { label: t("packing.received"), value: income.paid },
-                { label: t("packing.unreceived"), value: income.outstanding },
-                { label: t("packing.overdueUnpaid"), value: income.overdue },
-                {
-                  label: t("packing.pendingInvoices"),
-                  value: income.pendingInvoices,
-                  count: true,
-                },
-              ].map((item) => (
-                <div
-                  key={item.label}
-                  className="rounded-2xl bg-[var(--bg)] px-3 py-2"
-                >
-                  <p className="text-xs text-[var(--muted)]">{item.label}</p>
-                  <p className="mt-0.5 text-base font-semibold">
-                    {item.count
-                      ? item.value
-                      : item.value.toLocaleString(undefined, {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}
-                  </p>
-                </div>
-              ))}
-            </div>
           </Card>
 
           {filtered.length === 0 ? (
@@ -384,13 +267,6 @@ export function PackingPage() {
                                             ? t("pickups.statusPartial")
                                             : t("pickups.statusUnpaid")}
                                     </span>
-                                    {user?.role === "admin" ? (
-                                      <GhostButton
-                                        onClick={() => setReceiptTarget(invoice)}
-                                      >
-                                        {t("packing.receivePayment")}
-                                      </GhostButton>
-                                    ) : null}
                                   </div>
                                 </div>
                               );
@@ -436,88 +312,6 @@ export function PackingPage() {
               })}
             </div>
           )}
-
-          <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-3 lg:items-start">
-            <Card>
-              <p className="mb-2 font-semibold">
-                {t("packing.pendingReport", {
-                  count: income.pendingRecords.length,
-                })}
-              </p>
-              {income.pendingRecords.length === 0 ? (
-                <p className="text-sm text-[var(--muted)]">
-                  {t("packing.reportEmpty")}
-                </p>
-              ) : (
-                <ul className="max-h-52 space-y-1 overflow-y-auto text-xs">
-                  {income.pendingRecords.map((record) => (
-                    <li
-                      key={record.id}
-                      className="rounded-xl bg-[var(--bg)] px-2 py-1.5"
-                    >
-                      {record.date} · {record.storeName}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Card>
-            <Card>
-              <p className="mb-2 font-semibold">
-                {t("packing.unpaidReport", {
-                  count: income.unpaidInvoices.length,
-                })}
-              </p>
-              {income.unpaidInvoices.length === 0 ? (
-                <p className="text-sm text-[var(--muted)]">
-                  {t("packing.reportEmpty")}
-                </p>
-              ) : (
-                <ul className="max-h-52 space-y-1 overflow-y-auto text-xs">
-                  {income.unpaidInvoices.map((invoice) => (
-                    <li
-                      key={invoice.id}
-                      className="flex justify-between gap-2 rounded-xl bg-[var(--bg)] px-2 py-1.5"
-                    >
-                      <span className="truncate">
-                        {invoice.invoiceNo} · {invoice.buyerName}
-                      </span>
-                      <span className="shrink-0 font-medium text-amber-700">
-                        {invoiceOutstanding(invoice).toLocaleString()}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Card>
-            <Card>
-              <p className="mb-2 font-semibold">
-                {t("packing.overdueReport", {
-                  count: income.overdueInvoices.length,
-                })}
-              </p>
-              {income.overdueInvoices.length === 0 ? (
-                <p className="text-sm text-[var(--muted)]">
-                  {t("packing.reportEmpty")}
-                </p>
-              ) : (
-                <ul className="max-h-52 space-y-1 overflow-y-auto text-xs">
-                  {income.overdueInvoices.map((invoice) => (
-                    <li
-                      key={invoice.id}
-                      className="flex justify-between gap-2 rounded-xl bg-[var(--bg)] px-2 py-1.5"
-                    >
-                      <span className="truncate">
-                        {invoice.invoiceNo} · {invoice.snapshot.dueAt}
-                      </span>
-                      <span className="shrink-0 font-medium text-red-600">
-                        {invoiceOutstanding(invoice).toLocaleString()}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Card>
-          </div>
         </>
       )}
 
@@ -534,233 +328,7 @@ export function PackingPage() {
           }}
         />
       ) : null}
-
-      {receiptTarget ? (
-        <ReceiptSheet
-          invoice={receiptTarget}
-          onClose={() => setReceiptTarget(null)}
-          onAdd={async (input) => {
-            await addInvoicePayment(receiptTarget.id, input);
-            flash({ type: "ok", message: t("packing.receiptSaved") });
-            setReceiptTarget(null);
-          }}
-          onVoid={async (paymentId) => {
-            await voidInvoicePayment(receiptTarget.id, paymentId);
-            flash({ type: "ok", message: t("pickups.paymentVoided") });
-            setReceiptTarget(null);
-          }}
-        />
-      ) : null}
     </div>
-  );
-}
-
-function ReceiptSheet({
-  invoice,
-  onClose,
-  onAdd,
-  onVoid,
-}: {
-  invoice: InvoiceRecord;
-  onClose: () => void;
-  onAdd: (input: {
-    date: string;
-    amount: number;
-    method: string;
-    note: string;
-    proofPhotos: {
-      id: string;
-      rev: number;
-      preview?: string;
-      thumb?: string;
-    }[];
-  }) => Promise<void>;
-  onVoid: (paymentId: string) => Promise<void>;
-}) {
-  const { t } = useTranslation();
-  const paid = invoicePaidAmount(invoice);
-  const outstanding = invoiceOutstanding(invoice);
-  const [date, setDate] = useState(todayIso());
-  const [amount, setAmount] = useState(
-    outstanding > 0 ? String(outstanding) : "",
-  );
-  const [method, setMethod] = useState("bank");
-  const [note, setNote] = useState("");
-  const [proofPhotos, setProofPhotos] = useState<DraftPhoto[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  return (
-    <Sheet title={t("packing.receiptTitle")} onClose={onClose}>
-      <div className="space-y-4">
-        <div className="rounded-2xl bg-[var(--bg)] p-3 text-sm">
-          <p className="font-medium">
-            {invoice.invoiceNo} · {invoice.buyerName}
-          </p>
-          <p className="mt-1 text-xs text-[var(--muted)]">
-            {t("packing.invoiceAmount")} {invoice.snapshot.total.toLocaleString()}{" "}
-            · {t("packing.received")} {paid.toLocaleString()} ·{" "}
-            {t("packing.unreceived")} {outstanding.toLocaleString()}
-          </p>
-        </div>
-
-        {invoice.payments.length > 0 ? (
-          <ul className="space-y-2">
-            {invoice.payments.map((payment) => (
-              <li
-                key={payment.id}
-                className={`flex items-center justify-between gap-2 rounded-2xl bg-[var(--bg)] px-3 py-2 text-sm ${
-                  payment.voidedAt ? "opacity-60" : ""
-                }`}
-              >
-                <div className="min-w-0">
-                  <p
-                    className={`font-medium ${
-                      payment.voidedAt ? "line-through" : ""
-                    }`}
-                  >
-                    {payment.date} · {payment.amount.toLocaleString()}
-                    {payment.voidedAt ? (
-                      <span className="ml-2 text-[10px] text-red-600">
-                        {t("pickups.paymentVoided")}
-                      </span>
-                    ) : null}
-                  </p>
-                  <p className="truncate text-xs text-[var(--muted)]">
-                    {[payment.method, payment.note].filter(Boolean).join(" · ")}
-                  </p>
-                </div>
-                {!payment.voidedAt ? (
-                  <GhostButton
-                    danger
-                    onClick={() => {
-                      if (!window.confirm(t("packing.voidReceiptConfirm"))) {
-                        return;
-                      }
-                      void onVoid(payment.id).catch((err) =>
-                        setError(String(err)),
-                      );
-                    }}
-                  >
-                    {t("pickups.voidPayment")}
-                  </GhostButton>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        ) : null}
-
-        {outstanding > 0 ? (
-          <form
-            className="space-y-3 border-t border-[var(--line)] pt-4"
-            onSubmit={(event) => {
-              event.preventDefault();
-              const value = Number(amount);
-              if (!Number.isFinite(value) || value <= 0) {
-                setError(t("pickups.needPaymentAmount"));
-                return;
-              }
-              if (value > outstanding + 0.0001) {
-                setError(t("pickups.paymentOverAmount"));
-                return;
-              }
-              setError(null);
-              setBusy(true);
-              void onAdd({
-                date,
-                amount: value,
-                method,
-                note,
-                proofPhotos: proofPhotos.map((photo) => ({
-                  id: photo.id,
-                  rev: photo.rev,
-                  preview: photo.previewBase64,
-                  thumb: photo.thumbBase64,
-                })),
-              }).finally(() => setBusy(false));
-            }}
-          >
-            <p className="text-sm font-medium text-[var(--muted)]">
-              {t("packing.receivePayment")}
-            </p>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Field label={t("pickups.paymentDate")}>
-                <TextInput
-                  type="date"
-                  value={date}
-                  onChange={(event) => setDate(event.target.value)}
-                />
-              </Field>
-              <Field label={t("packing.receiptAmount")}>
-                <TextInput
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  inputMode="decimal"
-                  value={amount}
-                  onChange={(event) => setAmount(event.target.value)}
-                />
-              </Field>
-            </div>
-            <Field label={t("pickups.paymentMethod")}>
-              <select
-                value={method}
-                onChange={(event) => setMethod(event.target.value)}
-                className="min-h-11 w-full rounded-2xl border border-[var(--line)] bg-[var(--bg)] px-3 py-2.5 text-base"
-              >
-                <option value="bank">{t("pickups.paymentBank")}</option>
-                <option value="cash">{t("pickups.paymentCash")}</option>
-                <option value="other">{t("pickups.paymentOther")}</option>
-              </select>
-            </Field>
-            <Field label={t("pickups.paymentNote")} hint={t("common.optional")}>
-              <TextInput
-                value={note}
-                onChange={(event) => setNote(event.target.value)}
-              />
-            </Field>
-            <Field label={t("pickups.paymentProof")} hint={t("common.optional")}>
-              <MultiPhotoPicker
-                photos={proofPhotos}
-                nextId={() => `${invoice.id}-receipt-${crypto.randomUUID()}`}
-                onAdd={(photo) => setProofPhotos((prev) => [...prev, photo])}
-                onRemove={(key) =>
-                  setProofPhotos((prev) =>
-                    prev.filter((photo) => photo.key !== key),
-                  )
-                }
-                onError={(photoError) =>
-                  setError(
-                    photoError.message === "too-large"
-                      ? t("pickups.tooLarge")
-                      : t("pickups.unsupported"),
-                  )
-                }
-                labels={{
-                  add: t("pickups.addPaymentProof"),
-                  busy: t("pickups.compressing"),
-                  remove: t("common.delete"),
-                  hint: t("pickups.paymentProofHint"),
-                }}
-              />
-            </Field>
-            {error ? (
-              <p className="text-sm text-[var(--danger)]">{error}</p>
-            ) : null}
-            <div className="flex justify-end gap-2">
-              <GhostButton onClick={onClose}>{t("common.close")}</GhostButton>
-              <PrimaryButton type="submit" disabled={busy}>
-                {busy ? t("common.saving") : t("packing.saveReceipt")}
-              </PrimaryButton>
-            </div>
-          </form>
-        ) : (
-          <div className="flex justify-end">
-            <GhostButton onClick={onClose}>{t("common.close")}</GhostButton>
-          </div>
-        )}
-      </div>
-    </Sheet>
   );
 }
 

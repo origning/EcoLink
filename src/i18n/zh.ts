@@ -47,6 +47,7 @@ export const zh = {
     pickups: "取货",
     packing: "发货",
     invoices: "发票",
+    income: "收入",
     expenses: "支出",
     summary: "汇总",
     data: "数据",
@@ -336,6 +337,13 @@ export const zh = {
     createdBy: "录入人：{{name}}",
     tooLarge: "照片压缩后仍过大，请换一张更小的图",
     unsupported: "只支持 jpg / png / webp 图片",
+  },
+  income: {
+    title: "收入汇总",
+    allCustomers: "全部客户",
+    invoiceList: "发票与收款",
+    count: "共 {{count}} 张",
+    empty: "没有符合条件的发票",
   },
   expenses: {
     title: "支出汇总",

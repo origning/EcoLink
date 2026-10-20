@@ -22,6 +22,7 @@ const mainTabs: Record<UserRole, Tab[]> = {
     { to: "/invoices", key: "nav.invoices", icon: InvoiceIcon },
     { to: "/pickups", key: "nav.pickups", icon: PickupIcon },
     { to: "/packing", key: "nav.packing", icon: PackingIcon },
+    { to: "/income", key: "nav.income", icon: IncomeIcon },
     { to: "/expenses", key: "nav.expenses", icon: ExpensesIcon },
     { to: "/data", key: "nav.data", icon: DataIcon },
   ],
@@ -369,6 +370,26 @@ function InvoiceIcon() {
       />
       <path
         d="M9 8h6M9 12h6M9 16h3"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function IncomeIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M12 3v13m0 0 4-4m-4 4-4-4"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M5 19h14"
         stroke="currentColor"
         strokeWidth="1.8"
         strokeLinecap="round"
