@@ -218,6 +218,7 @@ export function InvoicesPage() {
       from: item.matrix.from,
       to: item.matrix.to,
       snapshot: item.snapshot,
+      payments: [],
       createdBy: user?.id ?? "local",
       createdByName: user?.username ?? "local",
       createdAt: Date.now(),

@@ -2,6 +2,7 @@ export {
   deleteIngredientImages,
   deletePackRecord,
   deletePickupRecord,
+  addInvoicePayment,
   deleteRecord,
   fetchBackup,
   fetchDb,
@@ -25,5 +26,6 @@ export {
   saveSettings,
   saveStore,
   saveTemplate,
+  voidInvoicePayment,
 } from "../storage";
 export type { StorageKind } from "../storage";

@@ -5,6 +5,7 @@ import type {
   Buyer,
   Group,
   Ingredient,
+  InvoicePayment,
   InvoiceRecord,
   Order,
   OrderTemplate,
@@ -113,6 +114,25 @@ export function saveInvoiceRecord(record: InvoiceRecord) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(record),
   }).then((res) => parseJson<{ record: InvoiceRecord; db: AppDb }>(res));
+}
+
+export function addInvoicePayment(
+  invoiceId: string,
+  payment: InvoicePayment,
+) {
+  return fetch(
+    `/api/invoices/${encodeURIComponent(invoiceId)}/payments`,
+    post(payment),
+  ).then((res) => parseJson<{ record: InvoiceRecord; db: AppDb }>(res));
+}
+
+export function voidInvoicePayment(invoiceId: string, paymentId: string) {
+  return fetch(
+    `/api/invoices/${encodeURIComponent(invoiceId)}/payments/${encodeURIComponent(
+      paymentId,
+    )}/void`,
+    post({}),
+  ).then((res) => parseJson<{ record: InvoiceRecord; db: AppDb }>(res));
 }
 
 export function deletePickupRecord(id: string) {

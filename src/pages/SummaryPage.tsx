@@ -668,6 +668,7 @@ export function InvoiceEditSheet({
         from: matrix.from,
         to: matrix.to,
         snapshot,
+        payments: [],
         createdBy: user?.id ?? "local",
         createdByName: user?.username ?? "local",
         createdAt: Date.now(),

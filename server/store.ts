@@ -7,6 +7,7 @@ import type {
   AuthUser,
   BackupFile,
   Buyer,
+  InvoicePayment,
   InvoiceRecord,
   InvoiceSettings,
   PackRecord,
@@ -389,7 +390,7 @@ export function createFileStore(
         packRecords: db.packRecords.filter(
           (record) => record.createdBy === user.id,
         ),
-        invoiceRecords: [],
+        invoiceRecords: db.invoiceRecords,
       };
     }
 
@@ -799,9 +800,16 @@ export function createFileStore(
           id,
           date: body.date,
           logistics,
+          trackingNo: text(body.trackingNo),
           storeName,
           note: text(body.note),
           buyerId: text(body.buyerId) || undefined,
+          invoiceIds: Array.isArray(body.invoiceIds)
+            ? body.invoiceIds.filter(
+                (value): value is string =>
+                  typeof value === "string" && Boolean(value),
+              )
+            : ((existing as PackRecord | undefined)?.invoiceIds ?? []),
           photos,
           invoicePhotos,
           createdBy: existing?.createdBy ?? user?.id ?? "local",
@@ -852,6 +860,89 @@ export function createFileStore(
     method: string,
     user: AuthUser | null,
   ): Promise<boolean> {
+    const paymentMatch = url.match(
+      /^\/api\/invoices\/([^/]+)\/payments(?:\/([^/]+)\/void)?$/,
+    );
+    if (paymentMatch) {
+      if (!isAdmin(user)) {
+        sendForbidden(res);
+        return true;
+      }
+      if (method !== "POST") {
+        sendJson(res, 405, { error: "method-not-allowed" });
+        return true;
+      }
+      const invoiceId = decodeURIComponent(paymentMatch[1]);
+      const paymentId = paymentMatch[2]
+        ? decodeURIComponent(paymentMatch[2])
+        : null;
+      const db = readDb();
+      const record = db.invoiceRecords.find((item) => item.id === invoiceId);
+      if (!record) {
+        sendJson(res, 404, { error: "invoice-not-found" });
+        return true;
+      }
+
+      if (paymentId) {
+        const now = Date.now();
+        record.payments = record.payments.map((payment) =>
+          payment.id === paymentId
+            ? {
+                ...payment,
+                voidedAt: now,
+                voidedBy: user?.id ?? "local",
+                voidedByName: user?.username ?? "local",
+              }
+            : payment,
+        );
+        writeDbAtomic(db);
+        sendJson(res, 200, { record, db: dbForUser(user) });
+        return true;
+      }
+
+      const body = await readJsonBody<Partial<InvoicePayment>>(req);
+      const amount = numberValue(body.amount);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        sendJson(res, 400, { error: "invalid-payment-amount" });
+        return true;
+      }
+      const paid = record.payments.reduce(
+        (sum, payment) => (payment.voidedAt ? sum : sum + payment.amount),
+        0,
+      );
+      const outstanding = Math.max(0, record.snapshot.total - paid);
+      if (amount > outstanding + 0.0001) {
+        sendJson(res, 400, { error: "payment-over-amount" });
+        return true;
+      }
+      record.payments.push({
+        id: text(body.id) || `invoice-payment-${crypto.randomUUID()}`,
+        date: text(body.date),
+        amount,
+        method: text(body.method),
+        note: text(body.note),
+        proofPhotos: Array.isArray(body.proofPhotos)
+          ? body.proofPhotos
+              .filter(
+                (photo): photo is PhotoRef =>
+                  Boolean(photo) &&
+                  typeof photo === "object" &&
+                  typeof (photo as PhotoRef).id === "string",
+              )
+              .map((photo) => ({
+                id: photo.id,
+                rev: numberValue(photo.rev),
+              }))
+          : [],
+        createdBy: user?.id ?? "local",
+        createdByName: user?.username ?? "local",
+        createdAt: Date.now(),
+      });
+      writeDbAtomic(db);
+      sendJson(res, 200, { record, db: dbForUser(user) });
+      return true;
+    }
+
     if (url !== "/api/invoices" || method !== "POST") return false;
     if (!roleAllowed(user, ["admin", "summarizer"])) {
       sendForbidden(res);
