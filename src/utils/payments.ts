@@ -1,4 +1,4 @@
-import type { PickupRecord, Store } from "../types";
+import type { InvoiceRecord, PickupRecord, Store } from "../types";
 
 export type PickupPaymentStatus = "unpaid" | "partial" | "paid";
 
@@ -20,6 +20,35 @@ export function pickupPaymentStatus(
   if (paid <= 0) return "unpaid";
   if (paid + 0.0001 >= record.amount) return "paid";
   return "partial";
+}
+
+export function invoicePaidAmount(invoice: InvoiceRecord) {
+  return invoice.payments.reduce(
+    (sum, payment) => (payment.voidedAt ? sum : sum + payment.amount),
+    0,
+  );
+}
+
+export function invoiceTotal(invoice: InvoiceRecord) {
+  return invoice.snapshot.total;
+}
+
+export function invoiceOutstanding(invoice: InvoiceRecord) {
+  return Math.max(0, invoiceTotal(invoice) - invoicePaidAmount(invoice));
+}
+
+export function invoicePaymentStatus(
+  invoice: InvoiceRecord,
+): PickupPaymentStatus {
+  const paid = invoicePaidAmount(invoice);
+  if (paid <= 0) return "unpaid";
+  if (paid + 0.0001 >= invoiceTotal(invoice)) return "paid";
+  return "partial";
+}
+
+export function invoiceIsOverdue(invoice: InvoiceRecord, today: string) {
+  if (invoiceOutstanding(invoice) <= 0) return false;
+  return Boolean(invoice.snapshot.dueAt && invoice.snapshot.dueAt < today);
 }
 
 export function storeForRecord(

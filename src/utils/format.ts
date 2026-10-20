@@ -3,6 +3,7 @@ import type {
   Buyer,
   Group,
   Ingredient,
+  InvoicePayment,
   InvoiceRecord,
   InvoiceSnapshot,
   PackRecord,
@@ -186,6 +187,37 @@ export function normalizePickupPayments(value: unknown): PickupPayment[] {
   });
 }
 
+export function normalizeInvoicePayments(value: unknown): InvoicePayment[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry, index) => {
+    if (!entry || typeof entry !== "object") return [];
+    const item = entry as Partial<InvoicePayment>;
+    const amount = number(item.amount);
+    if (amount <= 0) return [];
+    return [
+      {
+        id: text(item.id) || `invoice-payment-${index}-${number(item.createdAt)}`,
+        date: text(item.date),
+        amount,
+        method: text(item.method),
+        note: text(item.note),
+        proofPhotos: normalizePhotoRefs(
+          item.proofPhotos,
+          `${text(item.id) || `invoice-payment-${index}`}-proof`,
+          false,
+          0,
+        ),
+        createdBy: text(item.createdBy, "local"),
+        createdByName: text(item.createdByName, "local"),
+        createdAt: number(item.createdAt),
+        voidedAt: item.voidedAt ? number(item.voidedAt) : undefined,
+        voidedBy: text(item.voidedBy) || undefined,
+        voidedByName: text(item.voidedByName) || undefined,
+      },
+    ];
+  });
+}
+
 export function normalizePickupRecord(
   item: Partial<PickupRecord> &
     Pick<PickupRecord, "id"> &
@@ -228,9 +260,15 @@ export function normalizePackRecord(
     id: item.id,
     date: text(item.date),
     logistics: text(item.logistics),
+    trackingNo: text(item.trackingNo),
     storeName: text(item.storeName),
     note: text(item.note),
     buyerId: text(item.buyerId) || undefined,
+    invoiceIds: Array.isArray(item.invoiceIds)
+      ? item.invoiceIds.filter(
+          (id): id is string => typeof id === "string" && Boolean(id),
+        )
+      : [],
     photos: normalizePhotoRefs(
       item.photos,
       item.id,
@@ -272,6 +310,7 @@ export function normalizeInvoiceRecord(
     buyerName: text(item.buyerName),
     from: text(item.from),
     to: text(item.to),
+    payments: normalizeInvoicePayments(item.payments),
     snapshot: {
       companyName: text(snapshotInput.companyName),
       tagline: text(snapshotInput.tagline),

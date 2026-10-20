@@ -21,7 +21,13 @@ import {
 import { useAppStore } from "../store/useAppStore";
 import { useAuthStore } from "../store/useAuthStore";
 import { monthStartIso, todayIso } from "../utils/format";
-import type { PackRecord, PhotoRef } from "../types";
+import {
+  invoiceIsOverdue,
+  invoiceOutstanding,
+  invoicePaidAmount,
+  invoicePaymentStatus,
+} from "../utils/payments";
+import type { InvoiceRecord, PackRecord, PhotoRef } from "../types";
 
 function toDraftPhotos(photos: PhotoRef[]): DraftPhoto[] {
   return photos.map((photo) => ({
@@ -36,6 +42,7 @@ export function PackingPage() {
   const { t } = useTranslation();
   const records = useAppStore((s) => s.packRecords);
   const buyers = useAppStore((s) => s.buyers);
+  const invoices = useAppStore((s) => s.invoiceRecords);
   const saveRecord = useAppStore((s) => s.savePackRecord);
   const deleteRecord = useAppStore((s) => s.deletePackRecord);
   const flash = useAppStore((s) => s.flash);
@@ -46,6 +53,17 @@ export function PackingPage() {
   const [from, setFrom] = useState(monthStartIso());
   const [to, setTo] = useState(todayIso());
   const [keyword, setKeyword] = useState("");
+  const today = todayIso();
+
+  const invoiceMap = useMemo(
+    () => new Map(invoices.map((invoice) => [invoice.id, invoice])),
+    [invoices],
+  );
+
+  const recordInvoices = (record: PackRecord) =>
+    record.invoiceIds
+      .map((id) => invoiceMap.get(id))
+      .filter((invoice): invoice is InvoiceRecord => Boolean(invoice));
 
   const start = mode === "single" ? day : from <= to ? from : to;
   const end = mode === "single" ? day : from <= to ? to : from;
@@ -56,19 +74,23 @@ export function PackingPage() {
         if (record.date < start || record.date > end) return false;
         if (!needle) return true;
         const buyer = buyers.find((item) => item.id === record.buyerId);
+        const linked = recordInvoices(record);
         return [
           record.logistics,
+          record.trackingNo,
           record.storeName,
           record.note,
           buyer?.name ?? "",
           buyer?.code ?? "",
+          ...linked.map((invoice) => invoice.invoiceNo),
         ]
           .join(" ")
           .toLowerCase()
           .includes(needle);
       })
       .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
-  }, [records, buyers, start, end, keyword]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [records, buyers, invoices, start, end, keyword]);
 
   const canEdit = (record: PackRecord) =>
     user?.role === "admin" || record.createdBy === user?.id;
@@ -150,6 +172,7 @@ export function PackingPage() {
             <div className="space-y-2 lg:grid lg:grid-cols-2 lg:items-start lg:gap-3 lg:space-y-0">
               {filtered.map((record) => {
                 const buyer = buyers.find((item) => item.id === record.buyerId);
+                const linked = recordInvoices(record);
                 return (
                   <Card key={record.id}>
                     <div className="flex items-start gap-3">
@@ -186,6 +209,9 @@ export function PackingPage() {
                         <p className="mt-0.5 text-xs text-[var(--muted)]">
                           {record.date} · {t("packing.logistics")}:{" "}
                           {record.logistics}
+                          {record.trackingNo
+                            ? ` · ${record.trackingNo}`
+                            : ""}
                         </p>
                         {buyer ? (
                           <p className="truncate text-xs text-[var(--ink)]">
@@ -195,6 +221,58 @@ export function PackingPage() {
                         {record.note ? (
                           <p className="mt-1 text-sm text-[var(--ink)]">{record.note}</p>
                         ) : null}
+                        <div className="mt-2 space-y-1">
+                          {linked.length === 0 ? (
+                            <span className="inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                              {t("packing.pendingInvoice")}
+                            </span>
+                          ) : (
+                            linked.map((invoice) => {
+                              const status = invoicePaymentStatus(invoice);
+                              const overdue = invoiceIsOverdue(invoice, today);
+                              return (
+                                <div
+                                  key={invoice.id}
+                                  className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-[var(--bg)] px-2 py-1.5 text-xs"
+                                >
+                                  <div className="min-w-0">
+                                    <p className="truncate font-medium">
+                                      {invoice.invoiceNo} ·{" "}
+                                      {invoice.snapshot.total.toLocaleString()}
+                                    </p>
+                                    <p className="text-[var(--muted)]">
+                                      {t("packing.received")}{" "}
+                                      {invoicePaidAmount(invoice).toLocaleString()}{" "}
+                                      · {t("packing.unreceived")}{" "}
+                                      {invoiceOutstanding(invoice).toLocaleString()}
+                                    </p>
+                                  </div>
+                                  <div className="flex shrink-0 items-center gap-1">
+                                    <span
+                                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                                        overdue
+                                          ? "bg-red-100 text-red-700"
+                                          : status === "paid"
+                                            ? "bg-emerald-50 text-emerald-700"
+                                            : status === "partial"
+                                              ? "bg-amber-50 text-amber-700"
+                                              : "bg-red-50 text-red-600"
+                                      }`}
+                                    >
+                                      {overdue
+                                        ? t("pickups.statusOverdue")
+                                        : status === "paid"
+                                          ? t("pickups.statusPaid")
+                                          : status === "partial"
+                                            ? t("pickups.statusPartial")
+                                            : t("pickups.statusUnpaid")}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
                         {user?.role === "admin" ? (
                           <p className="mt-1 text-xs text-[var(--muted)]">
                             {t("pickups.createdBy", { name: record.createdByName })}
@@ -241,6 +319,7 @@ export function PackingPage() {
         <PackingSheet
           initial={editing === "new" ? null : editing}
           buyers={buyers}
+          invoices={invoices}
           onClose={() => setEditing(null)}
           onSave={async (input) => {
             await saveRecord(input);
@@ -256,19 +335,23 @@ export function PackingPage() {
 function PackingSheet({
   initial,
   buyers,
+  invoices,
   onClose,
   onSave,
 }: {
   initial: PackRecord | null;
   buyers: ReturnType<typeof useAppStore.getState>["buyers"];
+  invoices: InvoiceRecord[];
   onClose: () => void;
   onSave: (input: {
     id?: string;
     date: string;
     logistics: string;
+    trackingNo: string;
     storeName: string;
     note: string;
     buyerId?: string;
+    invoiceIds: string[];
     photos: {
       id: string;
       rev: number;
@@ -288,9 +371,13 @@ function PackingSheet({
   const [id] = useState(initial?.id ?? `pack-${crypto.randomUUID()}`);
   const [date, setDate] = useState(initial?.date ?? todayIso());
   const [logistics, setLogistics] = useState(initial?.logistics ?? "");
+  const [trackingNo, setTrackingNo] = useState(initial?.trackingNo ?? "");
   const [storeName, setStoreName] = useState(initial?.storeName ?? "");
   const [note, setNote] = useState(initial?.note ?? "");
   const [buyerId, setBuyerId] = useState(initial?.buyerId ?? "");
+  const [invoiceIds, setInvoiceIds] = useState<string[]>(
+    initial?.invoiceIds ?? [],
+  );
   const [photos, setPhotos] = useState<DraftPhoto[]>(() =>
     toDraftPhotos(initial?.photos ?? []),
   );
@@ -302,6 +389,9 @@ function PackingSheet({
   const sortedBuyers = [...buyers].sort(
     (a, b) => a.sort - b.sort || a.name.localeCompare(b.name, "zh"),
   );
+  const buyerInvoices = invoices
+    .filter((invoice) => invoice.buyerId === buyerId)
+    .sort((a, b) => b.createdAt - a.createdAt);
 
   return (
     <Sheet
@@ -324,6 +414,10 @@ function PackingSheet({
             flash({ type: "error", message: t("packing.needStore") });
             return;
           }
+          if (!buyerId) {
+            flash({ type: "error", message: t("packing.needBuyer") });
+            return;
+          }
           if (photos.length === 0) {
             flash({ type: "error", message: t("packing.needPhoto") });
             return;
@@ -337,9 +431,11 @@ function PackingSheet({
             id,
             date,
             logistics: logistics.trim(),
+            trackingNo: trackingNo.trim(),
             storeName: storeName.trim(),
             note: note.trim(),
             buyerId: buyerId || undefined,
+            invoiceIds,
             photos: photos.map((photo) => ({
               id: photo.id,
               rev: photo.rev,
@@ -368,16 +464,32 @@ function PackingSheet({
             onChange={(event) => setLogistics(event.target.value)}
           />
         </Field>
+        <Field label={t("packing.trackingNo")} hint={t("common.optional")}>
+          <TextInput
+            value={trackingNo}
+            onChange={(event) => setTrackingNo(event.target.value)}
+          />
+        </Field>
         <Field label={t("packing.storeName")} hint={t("common.required")}>
           <TextInput
             value={storeName}
             onChange={(event) => setStoreName(event.target.value)}
           />
         </Field>
-        <Field label={t("pickups.buyer")} hint={t("common.optional")}>
+        <Field label={t("pickups.buyer")} hint={t("common.required")}>
           <select
             value={buyerId}
-            onChange={(event) => setBuyerId(event.target.value)}
+            onChange={(event) => {
+              const nextBuyerId = event.target.value;
+              setBuyerId(nextBuyerId);
+              setInvoiceIds((prev) =>
+                prev.filter(
+                  (id) =>
+                    invoices.find((invoice) => invoice.id === id)?.buyerId ===
+                    nextBuyerId,
+                ),
+              );
+            }}
             className="min-h-10 w-full rounded-[10px] border border-[var(--line)] bg-white px-3 py-2 text-base text-[var(--ink)] sm:text-sm"
           >
             <option value="">{t("pickups.noBuyer")}</option>
@@ -388,6 +500,62 @@ function PackingSheet({
             ))}
           </select>
         </Field>
+        <div className="space-y-1.5">
+          <span className="text-sm font-medium text-[var(--muted)]">
+            {t("packing.invoices")}{" "}
+            <span className="text-xs font-normal">
+              {t("packing.invoiceLinkHint")}
+            </span>
+          </span>
+          {!buyerId ? (
+            <p className="text-xs text-[var(--muted)]">
+              {t("packing.selectBuyerFirst")}
+            </p>
+          ) : buyerInvoices.length === 0 ? (
+            <p className="text-xs text-amber-700">
+              {t("packing.noInvoicesForBuyer")}
+            </p>
+          ) : (
+            <ul className="max-h-48 space-y-1 overflow-y-auto rounded-2xl border border-[var(--line)] bg-[var(--bg)] p-2">
+              {buyerInvoices.map((invoice) => {
+                const checked = invoiceIds.includes(invoice.id);
+                return (
+                  <li key={invoice.id}>
+                    <label className="flex cursor-pointer items-center gap-2 rounded-xl bg-white px-2 py-1.5 text-sm">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4"
+                        checked={checked}
+                        onChange={() =>
+                          setInvoiceIds((prev) =>
+                            checked
+                              ? prev.filter((id) => id !== invoice.id)
+                              : [...prev, invoice.id],
+                          )
+                        }
+                      />
+                      <span className="min-w-0 flex-1 truncate">
+                        {invoice.invoiceNo} · {invoice.snapshot.total.toLocaleString()}
+                      </span>
+                      <span className="shrink-0 text-xs text-[var(--muted)]">
+                        {invoiceOutstanding(invoice) > 0
+                          ? `${t("packing.unreceived")} ${invoiceOutstanding(
+                              invoice,
+                            ).toLocaleString()}`
+                          : t("pickups.statusPaid")}
+                      </span>
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {buyerId && invoiceIds.length === 0 ? (
+            <p className="text-xs text-amber-700">
+              {t("packing.pendingInvoiceHint")}
+            </p>
+          ) : null}
+        </div>
         <Field label={t("packing.photos")} hint={t("common.required")}>
           <MultiPhotoPicker
             photos={photos}

@@ -137,14 +137,34 @@ export type PickupRecord = {
   updatedAt: number;
 };
 
+/** 一张发票的一笔收款 */
+export type InvoicePayment = {
+  id: string;
+  date: string;
+  amount: number;
+  method: string;
+  note: string;
+  proofPhotos: PhotoRef[];
+  createdBy: string;
+  createdByName: string;
+  createdAt: number;
+  /** 作废时间；作废后不计入已收金额 */
+  voidedAt?: number;
+  voidedBy?: string;
+  voidedByName?: string;
+};
+
 /** 打包发货员记录：多张打包照片、发票照片、物流、发货店名 */
 export type PackRecord = {
   id: string;
   date: string;
   logistics: string;
+  trackingNo: string;
   storeName: string;
   note: string;
   buyerId?: string;
+  /** 关联的发票 id，可关联多张 */
+  invoiceIds: string[];
   photos: PhotoRef[];
   invoicePhotos: PhotoRef[];
   createdBy: string;
@@ -196,6 +216,8 @@ export type InvoiceRecord = {
   from: string;
   to: string;
   snapshot: InvoiceSnapshot;
+  /** 已登记的客户收款 */
+  payments: InvoicePayment[];
   createdBy: string;
   createdByName: string;
   createdAt: number;

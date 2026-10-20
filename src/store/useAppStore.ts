@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import {
+  addInvoicePayment as apiAddInvoicePayment,
   deleteIngredientImages,
   deletePackRecord as apiDeletePackRecord,
   deletePickupRecord as apiDeletePickupRecord,
@@ -18,6 +19,7 @@ import {
   saveSettings,
   saveStore as apiSaveStore,
   saveTemplate,
+  voidInvoicePayment as apiVoidInvoicePayment,
 } from "../api/db";
 import i18n from "../i18n";
 import {
@@ -35,6 +37,7 @@ import type {
   InvoiceRecord,
   InvoiceSettings,
   Locale,
+  InvoicePayment,
   Order,
   OrderTemplate,
   OrderTemplateKind,
@@ -82,9 +85,11 @@ type PackInput = {
   id?: string;
   date: string;
   logistics: string;
+  trackingNo: string;
   storeName: string;
   note: string;
   buyerId?: string;
+  invoiceIds: string[];
   photos: PhotoInput[];
   invoicePhotos: PhotoInput[];
 };
@@ -155,6 +160,17 @@ type AppState = AppDb & {
   savePackRecord: (input: PackInput) => Promise<void>;
   deletePackRecord: (id: string) => Promise<void>;
   saveInvoiceRecord: (record: InvoiceRecord) => Promise<InvoiceRecord>;
+  addInvoicePayment: (
+    invoiceId: string,
+    input: {
+      date: string;
+      amount: number;
+      method: string;
+      note: string;
+      proofPhotos?: PhotoInput[];
+    },
+  ) => Promise<void>;
+  voidInvoicePayment: (invoiceId: string, paymentId: string) => Promise<void>;
   purgeData: (input: {
     from: string;
     to: string;
@@ -796,9 +812,11 @@ export const useAppStore = create<AppState>((set, get) => {
         id,
         date: input.date,
         logistics: input.logistics.trim(),
+        trackingNo: input.trackingNo.trim(),
         storeName: input.storeName.trim(),
         note: input.note.trim(),
         buyerId: input.buyerId || undefined,
+        invoiceIds: input.invoiceIds,
         photos,
         invoicePhotos,
         createdBy: existing?.createdBy ?? user?.id ?? "local",
@@ -835,6 +853,41 @@ export const useAppStore = create<AppState>((set, get) => {
         const res = await apiSaveInvoiceRecord(record);
         set({ ...toState(res.db), saving: false });
         return res.record;
+      } catch (error) {
+        set({ saving: false });
+        throw error;
+      }
+    },
+
+    addInvoicePayment: async (invoiceId, input) => {
+      set({ saving: true });
+      try {
+        const user = useAuthStore.getState().user;
+        const proofPhotos = await uploadPhotoInputs(input.proofPhotos ?? []);
+        const payment: InvoicePayment = {
+          id: `invoice-payment-${crypto.randomUUID()}`,
+          date: input.date,
+          amount: input.amount,
+          method: input.method.trim(),
+          note: input.note.trim(),
+          proofPhotos,
+          createdBy: user?.id ?? "local",
+          createdByName: user?.username ?? "local",
+          createdAt: Date.now(),
+        };
+        const res = await apiAddInvoicePayment(invoiceId, payment);
+        set({ ...toState(res.db), saving: false });
+      } catch (error) {
+        set({ saving: false });
+        throw error;
+      }
+    },
+
+    voidInvoicePayment: async (invoiceId, paymentId) => {
+      set({ saving: true });
+      try {
+        const res = await apiVoidInvoicePayment(invoiceId, paymentId);
+        set({ ...toState(res.db), saving: false });
       } catch (error) {
         set({ saving: false });
         throw error;

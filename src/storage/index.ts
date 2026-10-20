@@ -5,6 +5,7 @@ import type {
   Buyer,
   Group,
   Ingredient,
+  InvoicePayment,
   InvoiceRecord,
   Order,
   OrderTemplate,
@@ -180,6 +181,52 @@ export async function saveInvoiceRecord(record: InvoiceRecord) {
   if (record.invoiceNumber >= db.settings.invoice.nextInvoiceNumber) {
     db.settings.invoice.nextInvoiceNumber = record.invoiceNumber + 1;
   }
+  const next = await idbPutDb(db);
+  return { record, db: next };
+}
+
+export async function addInvoicePayment(
+  invoiceId: string,
+  payment: InvoicePayment,
+) {
+  await initStorage();
+  if (kind === "files") return httpDb.addInvoicePayment(invoiceId, payment);
+  const db = await idbFetchDb();
+  const record = db.invoiceRecords.find((item) => item.id === invoiceId);
+  if (!record) throw new Error("invoice-not-found");
+  const paid = record.payments.reduce(
+    (sum, item) => (item.voidedAt ? sum : sum + item.amount),
+    0,
+  );
+  const outstanding = Math.max(0, record.snapshot.total - paid);
+  if (payment.amount > outstanding + 0.0001) {
+    throw new Error("payment-over-amount");
+  }
+  record.payments = [...record.payments, payment];
+  const next = await idbPutDb(db);
+  return { record, db: next };
+}
+
+export async function voidInvoicePayment(
+  invoiceId: string,
+  paymentId: string,
+) {
+  await initStorage();
+  if (kind === "files") return httpDb.voidInvoicePayment(invoiceId, paymentId);
+  const db = await idbFetchDb();
+  const record = db.invoiceRecords.find((item) => item.id === invoiceId);
+  if (!record) throw new Error("invoice-not-found");
+  const now = Date.now();
+  record.payments = record.payments.map((payment) =>
+    payment.id === paymentId
+      ? {
+          ...payment,
+          voidedAt: now,
+          voidedBy: "local",
+          voidedByName: "local",
+        }
+      : payment,
+  );
   const next = await idbPutDb(db);
   return { record, db: next };
 }
