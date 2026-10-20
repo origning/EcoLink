@@ -93,3 +93,10 @@ export function resetUserPassword(id: string, password: string) {
     ...json({ password }),
   });
 }
+
+export function updateUserRole(id: string, role: UserRole) {
+  return request<{ ok: boolean }>(`/api/users/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    ...json({ role }),
+  });
+}

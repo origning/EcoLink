@@ -20,11 +20,12 @@
 | 反向代理 | Nginx + HTTPS（Let's Encrypt 自动续期） |
 | 应用 | Node 服务（PM2 守护）+ 静态 `dist/` |
 | 数据 | 服务器 `data/`：`db.json`、`auth.json`、`images/`，**所有登录用户共享** |
-| 登录 | 账号密码（管理员 / 录入员） |
+| 登录 | 账号密码，5 种角色：管理员 / 录入员 / 取货员 / 打包发货员 / 汇总订单员 |
 | 备份 | 每日 03:30 自动打包，保留 30 天 |
 | 代码仓库 | GitHub `origning/EcoLink` + Gitee `xieyuan123/eco-link`（仅源码备份） |
 
-部署与运维命令见 [`deploy/README.md`](deploy/README.md)。
+部署与运维命令见 [`deploy/README.md`](deploy/README.md)，版本号、更新和回退流程见 [`更新流程.md`](更新流程.md)。
+每次发布使用带版本号的部署包（如 `ecolink-deploy-v1.1.0-20261020-003427.tar.gz`），服务器用 `update.sh` 更新、`rollback.sh` 回退。
 改存储 / 接口时还要同步 [`SYSTEM.md`](SYSTEM.md) 第 3、4 节。
 
 ---

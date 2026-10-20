@@ -169,7 +169,7 @@ export function Sheet({
 }) {
   return (
     <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/35 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:items-center">
-      <div className="max-h-[min(88dvh,calc(100dvh-env(safe-area-inset-top)-1rem))] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-4 shadow-xl">
+      <div className="max-h-[min(88dvh,calc(100dvh-env(safe-area-inset-top)-1rem))] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-4 shadow-xl sm:max-w-xl lg:max-w-2xl lg:p-6">
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-lg font-semibold">{title}</h3>
           <button

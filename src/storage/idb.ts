@@ -1,4 +1,10 @@
-import type { AppDb, BackupFile } from "../types";
+import type {
+  AppDb,
+  BackupFile,
+  PurgePreview,
+  PurgeResult,
+  StorageStats,
+} from "../types";
 import { createDefaultDb } from "./defaultDb";
 import { normalizeDb } from "./normalizeDb";
 
@@ -233,4 +239,151 @@ export async function idbPutBackup(payload: BackupFile) {
   });
   await idbHydrateImageUrls();
   return normalized;
+}
+
+function inRange(date: string, start: string, end: string) {
+  return date >= start && date <= end;
+}
+
+function normalizeRange(from: string, to: string) {
+  return from <= to ? { start: from, end: to } : { start: to, end: from };
+}
+
+export async function idbPreviewPurge(
+  from: string,
+  to: string,
+  includeInvoices: boolean,
+): Promise<PurgePreview> {
+  const db = await idbFetchDb();
+  const { start, end } = normalizeRange(from, to);
+  const pickups = db.pickupRecords.filter((record) =>
+    inRange(record.date, start, end),
+  );
+  const packs = db.packRecords.filter((record) =>
+    inRange(record.date, start, end),
+  );
+  const invoices = includeInvoices
+    ? db.invoiceRecords.filter((record) =>
+        inRange(record.snapshot.issuedAt, start, end),
+      ).length
+    : 0;
+  const photoIds = new Set<string>();
+  for (const record of [...pickups, ...packs]) {
+    for (const photo of [...record.photos, ...record.invoicePhotos]) {
+      photoIds.add(photo.id);
+    }
+  }
+  const stored = await readAllImages();
+  let bytes = 0;
+  for (const id of photoIds) {
+    const files = stored[id];
+    if (!files) continue;
+    if (files.preview) bytes += files.preview.size;
+    if (files.thumb) bytes += files.thumb.size;
+  }
+  return {
+    from: start,
+    to: end,
+    orders: db.orders.filter((order) => inRange(order.date, start, end)).length,
+    pickups: pickups.length,
+    packs: packs.length,
+    invoices,
+    photos: photoIds.size,
+    bytes,
+  };
+}
+
+async function idbSweepImages(keepIds: Set<string>) {
+  const native = await openDb();
+  return new Promise<{ photosDeleted: number; bytesFreed: number }>(
+    (resolve, reject) => {
+      const tx = native.transaction("images", "readwrite");
+      const store = tx.objectStore("images");
+      let photosDeleted = 0;
+      let bytesFreed = 0;
+      const cursorRequest = store.openCursor();
+      cursorRequest.onerror = () =>
+        reject(cursorRequest.error ?? new Error("idb-cleanup-failed"));
+      cursorRequest.onsuccess = () => {
+        const cursor = cursorRequest.result;
+        if (!cursor) return;
+        const id = String(cursor.key);
+        if (!keepIds.has(id)) {
+          const value = cursor.value as { preview?: Blob; thumb?: Blob };
+          if (value.preview) bytesFreed += value.preview.size;
+          if (value.thumb) bytesFreed += value.thumb.size;
+          cursor.delete();
+          photosDeleted += 1;
+        }
+        cursor.continue();
+      };
+      tx.oncomplete = () => resolve({ photosDeleted, bytesFreed });
+      tx.onerror = () => reject(tx.error ?? new Error("idb-cleanup-failed"));
+    },
+  );
+}
+
+export async function idbPurgeData(input: {
+  from: string;
+  to: string;
+  includeInvoices: boolean;
+  confirm: string;
+}): Promise<PurgeResult> {
+  if (input.confirm !== "DELETE") throw new Error("confirm-required");
+  const before = await idbPreviewPurge(
+    input.from,
+    input.to,
+    input.includeInvoices,
+  );
+  const db = await idbFetchDb();
+  const { start, end } = normalizeRange(input.from, input.to);
+  db.orders = db.orders.filter((order) => !inRange(order.date, start, end));
+  db.pickupRecords = db.pickupRecords.filter(
+    (record) => !inRange(record.date, start, end),
+  );
+  db.packRecords = db.packRecords.filter(
+    (record) => !inRange(record.date, start, end),
+  );
+  if (input.includeInvoices) {
+    db.invoiceRecords = db.invoiceRecords.filter(
+      (record) => !inRange(record.snapshot.issuedAt, start, end),
+    );
+  }
+  await idbPutDb(db);
+  const keep = new Set<string>();
+  for (const ingredient of db.ingredients) {
+    if (ingredient.hasImage) keep.add(ingredient.id);
+  }
+  for (const record of db.pickupRecords) {
+    for (const photo of [...record.photos, ...record.invoicePhotos]) {
+      keep.add(photo.id);
+    }
+  }
+  for (const record of db.packRecords) {
+    for (const photo of [...record.photos, ...record.invoicePhotos]) {
+      keep.add(photo.id);
+    }
+  }
+  const swept = await idbSweepImages(keep);
+  await idbHydrateImageUrls();
+  return { ...before, ...swept };
+}
+
+export async function idbStorageStats(): Promise<StorageStats> {
+  const db = await idbFetchDb();
+  const stored = await readAllImages();
+  let imageBytes = 0;
+  for (const files of Object.values(stored)) {
+    if (files.preview) imageBytes += files.preview.size;
+    if (files.thumb) imageBytes += files.thumb.size;
+  }
+  return {
+    dbBytes: new Blob([JSON.stringify(db)]).size,
+    imageCount: Object.keys(stored).length,
+    imageBytes,
+    orders: db.orders.length,
+    pickups: db.pickupRecords.length,
+    packs: db.packRecords.length,
+    invoices: db.invoiceRecords.length,
+  };
 }

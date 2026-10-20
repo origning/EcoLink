@@ -55,7 +55,7 @@ export function ExportPreviewSheet({
   matrix: SummaryMatrix;
   title: string;
   confirmLabel: string;
-  groupLabel: (group: Group) => string;
+  groupLabel: (group: Group, parent?: Group) => string;
   onExport: (ordered: SummaryMatrix) => Promise<void>;
   onClose: () => void;
 }) {
@@ -195,7 +195,7 @@ export function ExportPreviewSheet({
               >
                 <DragHandle />
                 <span className="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--brand)]">
-                  {groupLabel(source.group)}
+                  {groupLabel(source.group, source.parent)}
                 </span>
                 <MoveButtons
                   upLabel={t("summary.moveUp")}

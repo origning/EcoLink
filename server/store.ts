@@ -1,9 +1,29 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
-import type { AppDb, BackupFile, Order, UserRole } from "../src/types";
-import { createDefaultDb } from "../src/storage/defaultDb";
+import type {
+  AppDb,
+  AuthUser,
+  BackupFile,
+  Buyer,
+  InvoiceRecord,
+  InvoiceSettings,
+  PackRecord,
+  PhotoRef,
+  PickupRecord,
+  PurgePreview,
+  PurgeResult,
+  StorageStats,
+  UserRole,
+} from "../src/types";
+import {
+  createDefaultDb,
+  DEFAULT_INVOICE,
+  normalizeInvoice,
+} from "../src/storage/defaultDb";
 import { normalizeDb } from "../src/storage/normalizeDb";
+import { normalizeInvoiceRecord } from "../src/utils/format";
 import type { AuthStore } from "./authStore";
 import {
   SESSION_TTL_MS,
@@ -15,6 +35,69 @@ import {
 const BACKUP_FORMAT = "ecolink-backup";
 const BACKUP_VERSION = 1;
 const MAX_BACKUP_BYTES = 80 * 1024 * 1024;
+const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+const MAX_THUMB_BYTES = 512 * 1024;
+
+type CollectionKey =
+  | "groups"
+  | "ingredients"
+  | "buyers"
+  | "orders"
+  | "templates"
+  | "pickupRecords"
+  | "packRecords"
+  | "invoiceRecords";
+
+function isIsoDate(value: unknown): value is string {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function text(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function numberValue(value: unknown, fallback = 0) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function rangeOf(from: unknown, to: unknown) {
+  if (!isIsoDate(from) || !isIsoDate(to)) return null;
+  return from <= to ? { start: from, end: to } : { start: to, end: from };
+}
+
+function inRange(date: string, start: string, end: string) {
+  return date >= start && date <= end;
+}
+
+function photoRefs(value: unknown, prefix: string): PhotoRef[] {
+  if (!Array.isArray(value)) return [];
+  const refs: PhotoRef[] = [];
+  for (const item of value) {
+    const id =
+      typeof item === "string" ? item : text((item as { id?: unknown })?.id);
+    if (!id || !id.startsWith(prefix)) continue;
+    const rev =
+      item && typeof item === "object"
+        ? numberValue((item as { rev?: unknown }).rev)
+        : 0;
+    refs.push({ id, rev });
+  }
+  return refs;
+}
+
+function minimalBuyers(buyers: Buyer[]): Buyer[] {
+  return buyers.map((buyer) => ({
+    id: buyer.id,
+    name: buyer.name,
+    code: buyer.code,
+    address: "",
+    phone: "",
+    logistics: "",
+    commonIngredientIds: [],
+    sort: buyer.sort,
+  }));
+}
 
 export function createFileStore(
   dataDir: string,
@@ -22,9 +105,9 @@ export function createFileStore(
 ) {
   const auth = options.auth ?? null;
   const imagesDir = path.join(dataDir, "images");
+  const prePurgeDir = path.join(dataDir, "pre-purge");
+  const cleanupLogPath = path.join(dataDir, "cleanup-log.json");
   const dbPath = path.join(dataDir, "db.json");
-
-  type CollectionKey = "groups" | "ingredients" | "buyers" | "orders" | "templates";
 
   function upsertInto(db: AppDb, key: CollectionKey, entity: { id: string }) {
     const list = db[key] as unknown as { id: string }[];
@@ -78,6 +161,10 @@ export function createFileStore(
     res.end(text);
   }
 
+  function sendForbidden(res: ServerResponse) {
+    sendJson(res, 403, { error: "forbidden" });
+  }
+
   function readBody(req: IncomingMessage): Promise<Buffer> {
     return new Promise((resolve, reject) => {
       const chunks: Buffer[] = [];
@@ -88,9 +175,9 @@ export function createFileStore(
   }
 
   async function readJsonBody<T>(req: IncomingMessage): Promise<T> {
-    const text = (await readBody(req)).toString("utf8");
-    if (!text) return {} as T;
-    return JSON.parse(text) as T;
+    const textBody = (await readBody(req)).toString("utf8");
+    if (!textBody) return {} as T;
+    return JSON.parse(textBody) as T;
   }
 
   function errorMessage(error: unknown) {
@@ -134,6 +221,13 @@ export function createFileStore(
     return buf.length ? buf : null;
   }
 
+  function deleteImageFiles(id: string) {
+    for (const kind of ["preview", "thumb"] as const) {
+      const file = imagePath(id, kind);
+      if (file && fs.existsSync(file)) fs.unlinkSync(file);
+    }
+  }
+
   function isAppDb(value: unknown): value is AppDb {
     if (!value || typeof value !== "object") return false;
     const db = value as AppDb;
@@ -155,6 +249,17 @@ export function createFileStore(
       if (match) ids.add(match[1]);
     }
     return [...ids];
+  }
+
+  function imageBytes(ids: Iterable<string>) {
+    let bytes = 0;
+    for (const id of ids) {
+      for (const kind of ["preview", "thumb"] as const) {
+        const file = imagePath(id, kind);
+        if (file && fs.existsSync(file)) bytes += fs.statSync(file).size;
+      }
+    }
+    return bytes;
   }
 
   function buildBackup(): BackupFile {
@@ -217,6 +322,215 @@ export function createFileStore(
         fs.unlinkSync(path.join(imagesDir, file));
       }
     }
+  }
+
+  function currentUser(req: IncomingMessage): AuthUser | null {
+    return auth ? auth.readToken(getSessionToken(req)) : null;
+  }
+
+  function isAdmin(user: AuthUser | null) {
+    return !auth || user?.role === "admin";
+  }
+
+  function roleAllowed(user: AuthUser | null, roles: UserRole[]) {
+    if (!auth) return true;
+    return Boolean(user && roles.includes(user.role));
+  }
+
+  function filterDbForUser(db: AppDb, user: AuthUser | null): AppDb {
+    if (!auth || !user || user.role === "admin") return db;
+
+    const restrictedSettings = {
+      ...db.settings,
+      invoice: { ...DEFAULT_INVOICE },
+    };
+
+    if (user.role === "editor") {
+      return {
+        ...db,
+        settings: restrictedSettings,
+        pickupRecords: [],
+        packRecords: [],
+        invoiceRecords: [],
+      };
+    }
+
+    if (user.role === "picker") {
+      return {
+        ...db,
+        settings: restrictedSettings,
+        groups: [],
+        ingredients: [],
+        buyers: minimalBuyers(db.buyers),
+        orders: [],
+        templates: [],
+        pickupRecords: db.pickupRecords.filter(
+          (record) => record.createdBy === user.id,
+        ),
+        packRecords: [],
+        invoiceRecords: [],
+      };
+    }
+
+    if (user.role === "packer") {
+      return {
+        ...db,
+        settings: restrictedSettings,
+        groups: [],
+        ingredients: [],
+        buyers: minimalBuyers(db.buyers),
+        orders: [],
+        templates: [],
+        pickupRecords: [],
+        packRecords: db.packRecords.filter(
+          (record) => record.createdBy === user.id,
+        ),
+        invoiceRecords: [],
+      };
+    }
+
+    // summarizer：只读业务数据，可查看发票记录。
+    return {
+      ...db,
+      templates: [],
+      pickupRecords: [],
+      packRecords: [],
+    };
+  }
+
+  function dbForUser(user: AuthUser | null) {
+    return filterDbForUser(readDb(), user);
+  }
+
+  function refreshForUser(res: ServerResponse, user: AuthUser | null) {
+    sendJson(res, 200, dbForUser(user));
+  }
+
+  function parseRange(body: { from?: unknown; to?: unknown }) {
+    return rangeOf(body.from, body.to);
+  }
+
+  function previewPurge(
+    db: AppDb,
+    start: string,
+    end: string,
+    includeInvoices: boolean,
+  ): PurgePreview {
+    const pickups = db.pickupRecords.filter((record) =>
+      inRange(record.date, start, end),
+    );
+    const packs = db.packRecords.filter((record) =>
+      inRange(record.date, start, end),
+    );
+    const invoiceCount = includeInvoices
+      ? db.invoiceRecords.filter((record) =>
+          inRange(record.snapshot.issuedAt, start, end),
+        ).length
+      : 0;
+    const photoIds = new Set<string>();
+    for (const record of [...pickups, ...packs]) {
+      for (const photo of [...record.photos, ...record.invoicePhotos]) {
+        photoIds.add(photo.id);
+      }
+    }
+    return {
+      from: start,
+      to: end,
+      orders: db.orders.filter((order) => inRange(order.date, start, end)).length,
+      pickups: pickups.length,
+      packs: packs.length,
+      invoices: invoiceCount,
+      photos: photoIds.size,
+      bytes: imageBytes(photoIds),
+    };
+  }
+
+  function referencedImageIds(db: AppDb) {
+    const ids = new Set<string>();
+    for (const ingredient of db.ingredients) {
+      if (ingredient.hasImage) ids.add(ingredient.id);
+    }
+    for (const record of db.pickupRecords) {
+      for (const photo of [...record.photos, ...record.invoicePhotos]) {
+        ids.add(photo.id);
+      }
+    }
+    for (const record of db.packRecords) {
+      for (const photo of [...record.photos, ...record.invoicePhotos]) {
+        ids.add(photo.id);
+      }
+    }
+    return ids;
+  }
+
+  function sweepOrphanImages(db: AppDb) {
+    const referenced = referencedImageIds(db);
+    let photosDeleted = 0;
+    let bytesFreed = 0;
+    for (const id of listImageIds()) {
+      if (referenced.has(id)) continue;
+      for (const kind of ["preview", "thumb"] as const) {
+        const file = imagePath(id, kind);
+        if (file && fs.existsSync(file)) {
+          bytesFreed += fs.statSync(file).size;
+          fs.unlinkSync(file);
+        }
+      }
+      photosDeleted += 1;
+    }
+    return { photosDeleted, bytesFreed };
+  }
+
+  function createPrePurgeBackup() {
+    fs.mkdirSync(prePurgeDir, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const name = `backup-${stamp}.json`;
+    const file = path.join(prePurgeDir, name);
+    fs.writeFileSync(file, JSON.stringify(buildBackup()), "utf8");
+
+    const files = fs
+      .readdirSync(prePurgeDir)
+      .filter((item) => item.endsWith(".json"))
+      .sort()
+      .reverse();
+    for (const old of files.slice(3)) {
+      fs.unlinkSync(path.join(prePurgeDir, old));
+    }
+    return name;
+  }
+
+  function appendCleanupLog(entry: Record<string, unknown>) {
+    let list: unknown[] = [];
+    try {
+      const parsed = JSON.parse(fs.readFileSync(cleanupLogPath, "utf8"));
+      if (Array.isArray(parsed)) list = parsed;
+    } catch {
+      // 第一次清理时文件不存在，直接新建。
+    }
+    list.push({ ...entry, at: new Date().toISOString() });
+    fs.writeFileSync(cleanupLogPath, JSON.stringify(list.slice(-200), null, 2), "utf8");
+  }
+
+  function storageStats(): StorageStats {
+    const db = readDb();
+    const ids = listImageIds();
+    return {
+      dbBytes: fs.existsSync(dbPath) ? fs.statSync(dbPath).size : 0,
+      imageCount: ids.length,
+      imageBytes: imageBytes(ids),
+      orders: db.orders.length,
+      pickups: db.pickupRecords.length,
+      packs: db.packRecords.length,
+      invoices: db.invoiceRecords.length,
+    };
+  }
+
+  function canWriteImage(user: AuthUser | null, id: string) {
+    if (!auth || !user) return true;
+    if (user.role === "admin") return true;
+    if (user.role === "picker") return id.startsWith("pickup-");
+    if (user.role === "packer") return id.startsWith("pack-");
+    return false;
   }
 
   // 返回 true 表示该请求已由认证相关路由处理。
@@ -321,7 +635,7 @@ export function createFileStore(
           const user = auth.createUser(
             String(body.username ?? ""),
             String(body.password ?? ""),
-            body.role === "admin" ? "admin" : "editor",
+            body.role as UserRole,
           );
           sendJson(res, 201, { user });
         } catch (error) {
@@ -349,9 +663,7 @@ export function createFileStore(
         if (method === "PATCH") {
           const body = await readJsonBody<{ role?: string; password?: string }>(req);
           try {
-            if (body.role) {
-              auth.setRole(id, body.role === "admin" ? "admin" : "editor");
-            }
+            if (body.role) auth.setRole(id, body.role as UserRole);
             if (body.password) auth.setPassword(id, String(body.password));
             sendJson(res, 200, { ok: true });
           } catch (error) {
@@ -368,38 +680,360 @@ export function createFileStore(
     return false;
   }
 
+  function evidenceKind(url: string) {
+    const match = url.match(/^\/api\/(pickups|packs)(?:\/([^/]+))?$/);
+    if (!match) return null;
+    return {
+      collection: (match[1] === "pickups" ? "pickupRecords" : "packRecords") as
+        | "pickupRecords"
+        | "packRecords",
+      id: match[2] ? decodeURIComponent(match[2]) : null,
+      isPickup: match[1] === "pickups",
+    };
+  }
+
+  async function handleEvidenceRoutes(
+    req: IncomingMessage,
+    res: ServerResponse,
+    url: string,
+    method: string,
+    user: AuthUser | null,
+  ): Promise<boolean> {
+    const kind = evidenceKind(url);
+    if (!kind) return false;
+
+    const allowedRoles: UserRole[] = kind.isPickup
+      ? ["admin", "picker"]
+      : ["admin", "packer"];
+    if (!roleAllowed(user, allowedRoles)) {
+      sendForbidden(res);
+      return true;
+    }
+
+    if (method === "POST" && !kind.id) {
+      const body = await readJsonBody<Partial<PickupRecord & PackRecord>>(req);
+      const id = text(body.id);
+      if (!id || !id.startsWith(kind.isPickup ? "pickup-" : "pack-")) {
+        sendJson(res, 400, { error: "invalid-id" });
+        return true;
+      }
+      if (!isIsoDate(body.date)) {
+        sendJson(res, 400, { error: "invalid-date" });
+        return true;
+      }
+      const storeName = text(body.storeName);
+      if (!storeName) {
+        sendJson(res, 400, { error: "store-required" });
+        return true;
+      }
+      const logistics = text(body.logistics);
+      if (!kind.isPickup && !logistics) {
+        sendJson(res, 400, { error: "logistics-required" });
+        return true;
+      }
+
+      const db = readDb();
+      const list = kind.isPickup ? db.pickupRecords : db.packRecords;
+      const existing = list.find((record) => record.id === id);
+      if (user && user.role !== "admin" && existing && existing.createdBy !== user.id) {
+        sendForbidden(res);
+        return true;
+      }
+
+      const prefix = kind.isPickup ? "pickup-" : "pack-";
+      const belongsToRecord = (photo: PhotoRef) =>
+        photo.id === id || photo.id.startsWith(`${id}-`);
+      const photos = photoRefs(body.photos, prefix).filter(belongsToRecord);
+      const invoicePhotos = photoRefs(body.invoicePhotos, prefix).filter(
+        belongsToRecord,
+      );
+      const removedPhotos = new Set<string>();
+      for (const photo of [
+        ...(existing?.photos ?? []),
+        ...(existing?.invoicePhotos ?? []),
+      ]) {
+        removedPhotos.add(photo.id);
+      }
+      for (const photo of [...photos, ...invoicePhotos]) {
+        removedPhotos.delete(photo.id);
+      }
+
+      const now = Date.now();
+      if (kind.isPickup) {
+        const next: PickupRecord = {
+          id,
+          date: body.date,
+          storeName,
+          tax: Math.max(0, numberValue(body.tax)),
+          amount: Math.max(0, numberValue(body.amount)),
+          note: text(body.note),
+          buyerId: text(body.buyerId) || undefined,
+          photos,
+          invoicePhotos,
+          createdBy: existing?.createdBy ?? user?.id ?? "local",
+          createdByName: existing?.createdByName ?? user?.username ?? "local",
+          createdAt: existing?.createdAt ?? now,
+          updatedAt: now,
+        };
+        upsertInto(db, "pickupRecords", next);
+      } else {
+        const next: PackRecord = {
+          id,
+          date: body.date,
+          logistics,
+          storeName,
+          note: text(body.note),
+          buyerId: text(body.buyerId) || undefined,
+          photos,
+          invoicePhotos,
+          createdBy: existing?.createdBy ?? user?.id ?? "local",
+          createdByName: existing?.createdByName ?? user?.username ?? "local",
+          createdAt: existing?.createdAt ?? now,
+          updatedAt: now,
+        };
+        upsertInto(db, "packRecords", next);
+      }
+      writeDbAtomic(db);
+      for (const photoId of removedPhotos) deleteImageFiles(photoId);
+      refreshForUser(res, user);
+      return true;
+    }
+
+    if (method === "DELETE" && kind.id) {
+      const db = readDb();
+      const list = kind.isPickup ? db.pickupRecords : db.packRecords;
+      const existing = list.find((record) => record.id === kind.id);
+      if (!existing) {
+        sendJson(res, 404, { error: "not-found" });
+        return true;
+      }
+      if (user && user.role !== "admin" && existing.createdBy !== user.id) {
+        sendForbidden(res);
+        return true;
+      }
+      removeFrom(db, kind.collection, kind.id);
+      writeDbAtomic(db);
+      for (const photo of [
+        ...(existing.photos ?? []),
+        ...(existing.invoicePhotos ?? []),
+      ]) {
+        deleteImageFiles(photo.id);
+      }
+      refreshForUser(res, user);
+      return true;
+    }
+
+    sendJson(res, 405, { error: "method-not-allowed" });
+    return true;
+  }
+
+  async function handleInvoiceRoute(
+    req: IncomingMessage,
+    res: ServerResponse,
+    url: string,
+    method: string,
+    user: AuthUser | null,
+  ): Promise<boolean> {
+    if (url !== "/api/invoices" || method !== "POST") return false;
+    if (!roleAllowed(user, ["admin", "summarizer"])) {
+      sendForbidden(res);
+      return true;
+    }
+    const body = await readJsonBody<Partial<InvoiceRecord>>(req);
+    const invoiceNo = text(body.invoiceNo);
+    if (!invoiceNo || !text(body.buyerId) || !body.snapshot) {
+      sendJson(res, 400, { error: "invalid-invoice" });
+      return true;
+    }
+    const db = readDb();
+    if (db.invoiceRecords.some((record) => record.invoiceNo === invoiceNo)) {
+      sendJson(res, 400, { error: "invoice-number-taken" });
+      return true;
+    }
+    const id = text(body.id) || `invoice-${crypto.randomUUID()}`;
+    if (db.invoiceRecords.some((record) => record.id === id)) {
+      sendJson(res, 400, { error: "invoice-exists" });
+      return true;
+    }
+    const numberFromBody = numberValue(body.invoiceNumber);
+    const numberFromText = numberValue(
+      Number((invoiceNo.match(/(\d+)$/) ?? [])[1]),
+    );
+    const invoiceNumber = numberFromBody || numberFromText;
+    const next = normalizeInvoiceRecord({
+      ...body,
+      id,
+      invoiceNo,
+      invoiceNumber,
+      createdBy: user?.id ?? "local",
+      createdByName: user?.username ?? "local",
+      createdAt: Date.now(),
+    });
+    db.invoiceRecords.push(next);
+    if (invoiceNumber >= db.settings.invoice.nextInvoiceNumber) {
+      db.settings.invoice.nextInvoiceNumber = invoiceNumber + 1;
+    }
+    writeDbAtomic(db);
+    sendJson(res, 200, { record: next, db: dbForUser(user) });
+    return true;
+  }
+
+  async function handleAdminRoutes(
+    req: IncomingMessage,
+    res: ServerResponse,
+    url: string,
+    method: string,
+    user: AuthUser | null,
+  ): Promise<boolean> {
+    if (!url.startsWith("/api/admin/")) return false;
+    if (!isAdmin(user)) {
+      sendForbidden(res);
+      return true;
+    }
+
+    if (url === "/api/admin/storage" && method === "GET") {
+      sendJson(res, 200, storageStats());
+      return true;
+    }
+
+    if (url === "/api/admin/purge/preview" && method === "POST") {
+      const body = await readJsonBody<{
+        from?: unknown;
+        to?: unknown;
+        includeInvoices?: unknown;
+      }>(req);
+      const range = parseRange(body);
+      if (!range) {
+        sendJson(res, 400, { error: "invalid-range" });
+        return true;
+      }
+      sendJson(
+        res,
+        200,
+        previewPurge(readDb(), range.start, range.end, Boolean(body.includeInvoices)),
+      );
+      return true;
+    }
+
+    if (url === "/api/admin/purge" && method === "POST") {
+      const body = await readJsonBody<{
+        from?: unknown;
+        to?: unknown;
+        includeInvoices?: unknown;
+        confirm?: unknown;
+      }>(req);
+      const range = parseRange(body);
+      if (!range) {
+        sendJson(res, 400, { error: "invalid-range" });
+        return true;
+      }
+      if (body.confirm !== "DELETE") {
+        sendJson(res, 400, { error: "confirm-required" });
+        return true;
+      }
+
+      const before = previewPurge(
+        readDb(),
+        range.start,
+        range.end,
+        Boolean(body.includeInvoices),
+      );
+      let backupFile: string | undefined;
+      try {
+        backupFile = createPrePurgeBackup();
+      } catch (error) {
+        sendJson(res, 500, { error: `backup-failed: ${errorMessage(error)}` });
+        return true;
+      }
+
+      const db = readDb();
+      db.orders = db.orders.filter(
+        (order) => !inRange(order.date, range.start, range.end),
+      );
+      db.pickupRecords = db.pickupRecords.filter(
+        (record) => !inRange(record.date, range.start, range.end),
+      );
+      db.packRecords = db.packRecords.filter(
+        (record) => !inRange(record.date, range.start, range.end),
+      );
+      if (body.includeInvoices) {
+        db.invoiceRecords = db.invoiceRecords.filter(
+          (record) => !inRange(record.snapshot.issuedAt, range.start, range.end),
+        );
+      }
+      writeDbAtomic(db);
+      const swept = sweepOrphanImages(db);
+      appendCleanupLog({
+        by: user?.username ?? "local",
+        from: range.start,
+        to: range.end,
+        includeInvoices: Boolean(body.includeInvoices),
+        orders: before.orders,
+        pickups: before.pickups,
+        packs: before.packs,
+        invoices: before.invoices,
+        photos: before.photos,
+        photosDeleted: swept.photosDeleted,
+        bytesFreed: swept.bytesFreed,
+        backupFile,
+      });
+
+      const result: PurgeResult = {
+        ...before,
+        photosDeleted: swept.photosDeleted,
+        bytesFreed: swept.bytesFreed,
+        backupFile,
+      };
+      sendJson(res, 200, result);
+      return true;
+    }
+
+    sendJson(res, 404, { error: "not-found" });
+    return true;
+  }
+
   async function handleApi(req: IncomingMessage, res: ServerResponse) {
     const url = (req.url ?? "").split("?")[0];
     const method = req.method ?? "GET";
 
     if (await handleAuthRoutes(req, res, url, method)) return;
 
+    const user = currentUser(req);
     // 认证开启时，其余所有接口都要求已登录。
-    if (auth) {
-      const user = auth.readToken(getSessionToken(req));
-      if (!user) {
-        sendJson(res, 401, { error: "unauthorized" });
-        return;
-      }
+    if (auth && !user) {
+      sendJson(res, 401, { error: "unauthorized" });
+      return;
     }
+
+    if (await handleAdminRoutes(req, res, url, method, user)) return;
+    if (await handleEvidenceRoutes(req, res, url, method, user)) return;
+    if (await handleInvoiceRoute(req, res, url, method, user)) return;
 
     if (url === "/api/settings" && method === "PATCH") {
       const body = await readJsonBody<{
         locale?: unknown;
         fontFamily?: unknown;
         fontSize?: unknown;
+        invoice?: unknown;
       }>(req);
       const db = readDb();
       if (body.locale === "zh" || body.locale === "en") db.settings.locale = body.locale;
-      if (typeof body.fontFamily === "string" && body.fontFamily) {
-        db.settings.fontFamily = body.fontFamily;
-      }
-      const size = Number(body.fontSize);
-      if (Number.isFinite(size) && size >= 6 && size <= 30) {
-        db.settings.fontSize = Math.round(size);
+      if (isAdmin(user)) {
+        if (typeof body.fontFamily === "string" && body.fontFamily) {
+          db.settings.fontFamily = body.fontFamily;
+        }
+        const size = Number(body.fontSize);
+        if (Number.isFinite(size) && size >= 6 && size <= 30) {
+          db.settings.fontSize = Math.round(size);
+        }
+        if (body.invoice && typeof body.invoice === "object") {
+          db.settings.invoice = normalizeInvoice(
+            body.invoice as Partial<InvoiceSettings>,
+          );
+        }
       }
       writeDbAtomic(db);
-      sendJson(res, 200, readDb());
+      refreshForUser(res, user);
       return;
     }
 
@@ -408,8 +1042,25 @@ export function createFileStore(
       /^\/api\/(groups|ingredients|buyers|orders|templates)(?:\/([^/]+))?$/,
     );
     if (entityMatch) {
-      const collection = entityMatch[1] as CollectionKey;
+      const collection = entityMatch[1] as
+        | "groups"
+        | "ingredients"
+        | "buyers"
+        | "orders"
+        | "templates";
       const id = entityMatch[2] ? decodeURIComponent(entityMatch[2]) : null;
+
+      const editableByEditor =
+        collection === "orders" || collection === "templates";
+      if (
+        auth &&
+        user &&
+        user.role !== "admin" &&
+        !(user.role === "editor" && editableByEditor)
+      ) {
+        sendForbidden(res);
+        return;
+      }
 
       if (method === "POST" && !id) {
         const entity = await readJsonBody<{ id?: unknown }>(req);
@@ -425,12 +1076,12 @@ export function createFileStore(
           db.orders = db.orders.filter(
             (order) => !(order.date === date && order.buyerId === buyerId),
           );
-          db.orders.push(entity as unknown as Order);
+          db.orders.push(entity as unknown as AppDb["orders"][number]);
         } else {
           upsertInto(db, collection, entity as unknown as { id: string });
         }
         writeDbAtomic(db);
-        sendJson(res, 200, readDb());
+        refreshForUser(res, user);
         return;
       }
 
@@ -445,7 +1096,7 @@ export function createFileStore(
         }
         removeFrom(db, collection, id);
         writeDbAtomic(db);
-        sendJson(res, 200, readDb());
+        refreshForUser(res, user);
         return;
       }
 
@@ -454,27 +1105,39 @@ export function createFileStore(
     }
 
     if (url === "/api/db" && method === "GET") {
-      sendJson(res, 200, readDb());
+      sendJson(res, 200, dbForUser(user));
       return;
     }
 
     if (url === "/api/db" && method === "PUT") {
+      if (!isAdmin(user)) {
+        sendForbidden(res);
+        return;
+      }
       const body = JSON.parse((await readBody(req)).toString("utf8")) as AppDb;
       if (!isAppDb(body)) {
         sendJson(res, 400, { error: "Invalid db payload" });
         return;
       }
       writeDbAtomic(body);
-      sendJson(res, 200, body);
+      sendJson(res, 200, dbForUser(user));
       return;
     }
 
     if (url === "/api/backup" && method === "GET") {
+      if (!isAdmin(user)) {
+        sendForbidden(res);
+        return;
+      }
       sendJson(res, 200, buildBackup());
       return;
     }
 
     if (url === "/api/backup" && method === "PUT") {
+      if (!isAdmin(user)) {
+        sendForbidden(res);
+        return;
+      }
       const raw = await readBody(req);
       if (raw.length > MAX_BACKUP_BYTES) {
         sendJson(res, 413, { error: "Backup too large" });
@@ -500,7 +1163,7 @@ export function createFileStore(
         return;
       }
       restoreBackup(payload);
-      sendJson(res, 200, readDb());
+      sendJson(res, 200, dbForUser(user));
       return;
     }
 
@@ -519,11 +1182,13 @@ export function createFileStore(
         return;
       }
 
+      if (!canWriteImage(user, id)) {
+        sendForbidden(res);
+        return;
+      }
+
       if (method === "DELETE") {
-        for (const k of ["preview", "thumb"] as const) {
-          const p = imagePath(id, k);
-          if (p && fs.existsSync(p)) fs.unlinkSync(p);
-        }
+        deleteImageFiles(id);
         sendJson(res, 200, { ok: true });
         return;
       }
@@ -537,6 +1202,10 @@ export function createFileStore(
         const thumb = decodeBase64Image(payload.thumb);
         if (!preview || !thumb) {
           sendJson(res, 400, { error: "Both preview and thumb are required" });
+          return;
+        }
+        if (preview.length > MAX_IMAGE_BYTES || thumb.length > MAX_THUMB_BYTES) {
+          sendJson(res, 413, { error: "image-too-large" });
           return;
         }
         fs.mkdirSync(imagesDir, { recursive: true });

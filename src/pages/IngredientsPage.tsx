@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ingredientThumbUrl } from "../api/db";
 import {
@@ -8,6 +8,7 @@ import {
   GhostButton,
   PageTitle,
   PrimaryButton,
+  SearchInput,
   Sheet,
   TextArea,
   TextInput,
@@ -15,8 +16,20 @@ import {
 } from "../components/ui";
 import { useAppStore } from "../store/useAppStore";
 import { compressImage } from "../utils/compressImage";
-import { groupLabel } from "../utils/format";
-import type { Ingredient } from "../types";
+import { groupLabel, ingredientMatches } from "../utils/format";
+import type { Group, Ingredient } from "../types";
+
+const bySort = (a: Group, b: Group) =>
+  a.sort - b.sort || a.name.localeCompare(b.name, "zh");
+
+function sortItems(items: Ingredient[]) {
+  return [...items].sort(
+    (a, b) =>
+      a.code.localeCompare(b.code, "zh") ||
+      a.nameEn.localeCompare(b.nameEn, "zh") ||
+      a.name.localeCompare(b.name, "zh"),
+  );
+}
 
 export function IngredientsPage() {
   const { t } = useTranslation();
@@ -33,23 +46,115 @@ export function IngredientsPage() {
   const [groupOpen, setGroupOpen] = useState(false);
   const [editing, setEditing] = useState<Partial<Ingredient> | "new" | null>(null);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [subCollapsed, setSubCollapsed] = useState<Record<string, boolean>>({});
+  const [keyword, setKeyword] = useState("");
+
+  const groupIds = useMemo(() => new Set(groups.map((group) => group.id)), [groups]);
+  const tops = useMemo(
+    () =>
+      groups
+        .filter((group) => !group.parentId || !groupIds.has(group.parentId))
+        .sort(bySort),
+    [groups, groupIds],
+  );
+  const childrenOf = useMemo(
+    () => (id: string) => groups.filter((group) => group.parentId === id).sort(bySort),
+    [groups],
+  );
+
+  const matches = useMemo(() => {
+    const needle = keyword.trim();
+    return (item: Ingredient) => !needle || ingredientMatches(item, needle);
+  }, [keyword]);
+
+  const itemsOf = (groupId: string) =>
+    sortItems(ingredients.filter((item) => item.groupId === groupId && matches(item)));
 
   const grouped = useMemo(
     () =>
-      [...groups]
-        .sort((a, b) => a.sort - b.sort)
-        .map((group) => ({
+      tops.map((top) => ({
+        group: top,
+        direct: itemsOf(top.id),
+        subs: childrenOf(top.id).map((group) => ({
           group,
-          items: ingredients
-            .filter((item) => item.groupId === group.id)
-            .sort(
-              (a, b) =>
-                a.code.localeCompare(b.code, "zh") ||
-                a.nameEn.localeCompare(b.nameEn, "zh") ||
-                a.name.localeCompare(b.name, "zh"),
-            ),
+          items: itemsOf(group.id),
         })),
-    [groups, ingredients],
+      })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [tops, groups, ingredients, keyword],
+  );
+
+  const searching = keyword.trim().length > 0;
+  const visible = grouped.filter(
+    (entry) =>
+      !searching ||
+      entry.direct.length > 0 ||
+      entry.subs.some((sub) => sub.items.length > 0),
+  );
+  const totalMatches = grouped.reduce(
+    (sum, entry) =>
+      sum + entry.direct.length + entry.subs.reduce((s, sub) => s + sub.items.length, 0),
+    0,
+  );
+
+  const renderItems = (items: Ingredient[]) => (
+    <ul className="mt-3 space-y-2">
+      {items.map((item) => (
+        <li
+          key={item.id}
+          className="flex items-center justify-between gap-3 rounded-2xl bg-[var(--bg)] px-2 py-2"
+        >
+          <button
+            type="button"
+            className="flex min-w-0 flex-1 items-center gap-3 text-left"
+            onClick={() => setEditing(item)}
+          >
+            <Thumb
+              src={
+                item.hasImage
+                  ? ingredientThumbUrl(item.id, item.imageRev)
+                  : undefined
+              }
+              alt={item.nameEn || item.name}
+            />
+            <span className="min-w-0">
+              <span className="block truncate font-medium">
+                {item.nameEn || item.name}
+              </span>
+              {item.name && item.nameEn && item.name !== item.nameEn && (
+                <span className="block truncate text-sm text-[var(--ink)]">
+                  {item.name}
+                </span>
+              )}
+              <span className="block truncate text-xs text-[var(--muted)]">
+                {[
+                  item.code,
+                  item.remark,
+                  item.unit,
+                  item.price > 0 ? `¥${item.price}` : "",
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </span>
+            </span>
+          </button>
+          <GhostButton
+            danger
+            onClick={() => {
+              const used = orders.some((order) =>
+                order.items.some((line) => line.ingredientId === item.id),
+              );
+              if (used && !window.confirm(t("ingredients.deleteConfirm"))) return;
+              void deleteIngredient(item.id)
+                .then(() => flash({ type: "ok", message: t("common.deleted") }))
+                .catch(() => flash({ type: "error", message: t("common.empty") }));
+            }}
+          >
+            {t("common.delete")}
+          </GhostButton>
+        </li>
+      ))}
+    </ul>
   );
 
   return (
@@ -66,95 +171,105 @@ export function IngredientsPage() {
 
       {groups.length === 0 ? (
         <EmptyState text={t("groups.empty")} />
-      ) : ingredients.length === 0 ? (
-        <div className="space-y-3">
-          <EmptyState text={t("ingredients.empty")} />
-          {grouped.map(({ group }) => (
-            <Card key={group.id}>
-              <p className="font-semibold">{groupLabel(group, t)}</p>
-              <p className="text-xs text-[var(--muted)]">0</p>
-            </Card>
-          ))}
-        </div>
       ) : (
         <div className="space-y-3">
-          {grouped.map(({ group, items }) => (
-            <Card key={group.id}>
-              <button
-                type="button"
-                className="flex w-full items-center justify-between"
-                onClick={() =>
-                  setCollapsed((prev) => ({ ...prev, [group.id]: !prev[group.id] }))
-                }
-              >
-                <div>
-                  <p className="font-semibold">{groupLabel(group, t)}</p>
-                  <p className="text-xs text-[var(--muted)]">{items.length}</p>
-                </div>
-                <span className="text-[var(--muted)]">{collapsed[group.id] ? "+" : "–"}</span>
-              </button>
-              {!collapsed[group.id] && (
-                <ul className="mt-3 space-y-2">
-                  {items.map((item) => (
-                    <li
-                      key={item.id}
-                      className="flex items-center justify-between gap-3 rounded-2xl bg-[var(--bg)] px-2 py-2"
-                    >
-                      <button
-                        type="button"
-                        className="flex min-w-0 flex-1 items-center gap-3 text-left"
-                        onClick={() => setEditing(item)}
-                      >
-                        <Thumb
-                          src={
-                            item.hasImage
-                              ? ingredientThumbUrl(item.id, item.imageRev)
-                              : undefined
-                          }
-                          alt={item.nameEn || item.name}
-                        />
-                        <span className="min-w-0">
-                          <span className="block truncate font-medium">
-                            {item.nameEn || item.name}
-                          </span>
-                          {item.name && item.nameEn && item.name !== item.nameEn && (
-                            <span className="block truncate text-sm text-[var(--ink)]">
-                              {item.name}
-                            </span>
+          <div className="lg:max-w-xl">
+            <SearchInput
+              value={keyword}
+              onValueChange={setKeyword}
+              placeholder={t("ingredients.searchPlaceholder")}
+              clearLabel={t("common.clear")}
+            />
+          </div>
+
+          <div className="lg:grid lg:grid-cols-2 lg:items-start lg:gap-3">
+          {totalMatches === 0 ? (
+            <EmptyState
+              text={searching ? t("ingredients.noMatch") : t("ingredients.empty")}
+            />
+          ) : (
+            visible.map((entry) => {
+              const count =
+                entry.direct.length +
+                entry.subs.reduce((sum, sub) => sum + sub.items.length, 0);
+              const showDirectHeading =
+                entry.direct.length > 0 && entry.subs.some((sub) => sub.items.length > 0);
+              return (
+                <Card key={entry.group.id}>
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-between"
+                    onClick={() =>
+                      setCollapsed((prev) => ({
+                        ...prev,
+                        [entry.group.id]: !prev[entry.group.id],
+                      }))
+                    }
+                  >
+                    <div className="text-left">
+                      <p className="font-semibold">{groupLabel(entry.group, t)}</p>
+                      <p className="text-xs text-[var(--muted)]">{count}</p>
+                    </div>
+                    <span className="text-[var(--muted)]">
+                      {collapsed[entry.group.id] ? "+" : "–"}
+                    </span>
+                  </button>
+                  {(!collapsed[entry.group.id] || searching) && (
+                    <div className="mt-3 space-y-4">
+                      {entry.direct.length > 0 && (
+                        <div>
+                          {showDirectHeading && (
+                            <p className="text-xs font-medium text-[var(--muted)]">
+                              {groupLabel(entry.group, t)}
+                            </p>
                           )}
-                          <span className="block truncate text-xs text-[var(--muted)]">
-                            {[item.code, item.remark].filter(Boolean).join(" · ")}
-                          </span>
-                        </span>
-                      </button>
-                      <GhostButton
-                        danger
-                        onClick={() => {
-                          const used = orders.some((order) =>
-                            order.items.some((line) => line.ingredientId === item.id),
-                          );
-                          if (used && !window.confirm(t("ingredients.deleteConfirm"))) return;
-                          void deleteIngredient(item.id)
-                            .then(() => flash({ type: "ok", message: t("common.deleted") }))
-                            .catch(() => flash({ type: "error", message: t("common.empty") }));
-                        }}
-                      >
-                        {t("common.delete")}
-                      </GhostButton>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Card>
-          ))}
+                          {renderItems(entry.direct)}
+                        </div>
+                      )}
+                      {entry.subs.map((sub) => {
+                        if (searching && sub.items.length === 0) return null;
+                        const isCollapsed = Boolean(subCollapsed[sub.group.id]) && !searching;
+                        return (
+                          <div key={sub.group.id}>
+                            <button
+                              type="button"
+                              className="flex w-full items-center justify-between gap-2 pl-3"
+                              onClick={() =>
+                                setSubCollapsed((prev) => ({
+                                  ...prev,
+                                  [sub.group.id]: !prev[sub.group.id],
+                                }))
+                              }
+                            >
+                              <span className="min-w-0 truncate text-sm font-medium text-[var(--brand)]">
+                                {isCollapsed ? "▸" : "▾"} {groupLabel(sub.group, t)}
+                                <span className="ml-1 text-xs text-[var(--muted)]">
+                                  {sub.items.length}
+                                </span>
+                              </span>
+                              <span className="shrink-0 text-[var(--muted)]">
+                                {isCollapsed ? "+" : "–"}
+                              </span>
+                            </button>
+                            {!isCollapsed && renderItems(sub.items)}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </Card>
+              );
+            })
+          )}
+          </div>
         </div>
       )}
 
       {groupOpen && (
         <GroupSheet
           onClose={() => setGroupOpen(false)}
-          onAdd={async (name) => {
-            await addGroup(name);
+          onAdd={async (name, parentId) => {
+            await addGroup(name, parentId);
             flash({ type: "ok", message: t("common.saved") });
           }}
           onRename={async (id, name) => {
@@ -210,31 +325,82 @@ function GroupSheet({
   onDelete,
 }: {
   onClose: () => void;
-  onAdd: (name: string) => Promise<void>;
+  onAdd: (name: string, parentId?: string) => Promise<void>;
   onRename: (id: string, name: string) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 }) {
   const { t } = useTranslation();
   const groups = useAppStore((s) => s.groups);
   const [name, setName] = useState("");
+  const [subNames, setSubNames] = useState<Record<string, string>>({});
+
+  const groupIds = new Set(groups.map((group) => group.id));
+  const tops = groups
+    .filter((group) => !group.parentId || !groupIds.has(group.parentId))
+    .sort(bySort);
+  const childrenOf = (id: string) =>
+    groups.filter((group) => group.parentId === id).sort(bySort);
 
   return (
     <Sheet title={t("groups.manage")} onClose={onClose}>
-      <div className="space-y-3">
-        {groups.map((group) => (
-          <div key={group.id} className="flex items-center gap-2">
-            <TextInput
-              defaultValue={groupLabel(group, t)}
-              onBlur={(event) => {
-                const next = event.target.value.trim();
-                if (next && next !== groupLabel(group, t)) void onRename(group.id, next);
-              }}
-            />
-            <GhostButton danger onClick={() => void onDelete(group.id)}>
-              {t("common.delete")}
-            </GhostButton>
-          </div>
-        ))}
+      <div className="space-y-4">
+        {tops.map((top) => {
+          const children = childrenOf(top.id);
+          const subName = subNames[top.id] ?? "";
+          return (
+            <div key={top.id} className="space-y-2 rounded-2xl bg-[var(--bg)] p-3">
+              <div className="flex items-center gap-2">
+                <TextInput
+                  defaultValue={groupLabel(top, t)}
+                  onBlur={(event) => {
+                    const next = event.target.value.trim();
+                    if (next && next !== groupLabel(top, t)) void onRename(top.id, next);
+                  }}
+                />
+                <GhostButton danger onClick={() => void onDelete(top.id)}>
+                  {t("common.delete")}
+                </GhostButton>
+              </div>
+              <div className="space-y-2 pl-4">
+                {children.map((child) => (
+                  <div key={child.id} className="flex items-center gap-2">
+                    <TextInput
+                      defaultValue={groupLabel(child, t)}
+                      onBlur={(event) => {
+                        const next = event.target.value.trim();
+                        if (next && next !== groupLabel(child, t)) {
+                          void onRename(child.id, next);
+                        }
+                      }}
+                    />
+                    <GhostButton danger onClick={() => void onDelete(child.id)}>
+                      {t("common.delete")}
+                    </GhostButton>
+                  </div>
+                ))}
+                <div className="flex gap-2">
+                  <TextInput
+                    value={subName}
+                    placeholder={t("groups.subName")}
+                    onChange={(e) =>
+                      setSubNames((prev) => ({ ...prev, [top.id]: e.target.value }))
+                    }
+                  />
+                  <PrimaryButton
+                    disabled={!subName.trim()}
+                    onClick={() => {
+                      void onAdd(subName.trim(), top.id).then(() =>
+                        setSubNames((prev) => ({ ...prev, [top.id]: "" })),
+                      );
+                    }}
+                  >
+                    {t("common.add")}
+                  </PrimaryButton>
+                </div>
+              </div>
+            </div>
+          );
+        })}
         <Field label={t("groups.add")}>
           <div className="flex gap-2">
             <TextInput value={name} onChange={(e) => setName(e.target.value)} />
@@ -266,6 +432,8 @@ function IngredientSheet({
     name: string;
     nameEn: string;
     remark: string;
+    unit: string;
+    price: number;
     groupId: string;
     images?: { preview: string; thumb: string };
   }) => Promise<void>;
@@ -277,7 +445,24 @@ function IngredientSheet({
   const [name, setName] = useState(initial?.name ?? "");
   const [nameEn, setNameEn] = useState(initial?.nameEn ?? "");
   const [remark, setRemark] = useState(initial?.remark ?? "");
-  const [groupId, setGroupId] = useState(initial?.groupId ?? groups[0]?.id ?? "");
+  const [unit, setUnit] = useState(initial?.unit ?? "");
+  const [price, setPrice] = useState(
+    initial?.price ? String(initial.price) : "",
+  );
+
+  const groupIds = new Set(groups.map((group) => group.id));
+  const tops = groups
+    .filter((group) => !group.parentId || !groupIds.has(group.parentId))
+    .sort(bySort);
+  const childrenOf = (id: string) =>
+    groups.filter((group) => group.parentId === id).sort(bySort);
+  const leafGroups = tops.flatMap((top) => {
+    const children = childrenOf(top.id);
+    return children.length > 0 ? children : [top];
+  });
+  const [groupId, setGroupId] = useState(
+    initial?.groupId ?? leafGroups[0]?.id ?? "",
+  );
   const [preview, setPreview] = useState(
     initial?.id && initial.hasImage
       ? ingredientThumbUrl(initial.id, initial.imageRev)
@@ -314,6 +499,8 @@ function IngredientSheet({
             name,
             nameEn,
             remark,
+            unit,
+            price: Number(price) > 0 ? Number(price) : 0,
             groupId,
             images,
           }).finally(() => setBusy(false));
@@ -362,6 +549,23 @@ function IngredientSheet({
         <Field label={t("ingredients.name")} hint={t("common.optional")}>
           <TextInput value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
+        <Field label={t("ingredients.price")} hint={t("common.optional")}>
+          <TextInput
+            type="number"
+            min="0"
+            step="0.01"
+            inputMode="decimal"
+            value={price}
+            onChange={(e) => setPrice(e.target.value)}
+          />
+        </Field>
+        <Field label={t("ingredients.unit")} hint={t("common.optional")}>
+          <TextInput
+            value={unit}
+            placeholder="kg / ctn / pcs"
+            onChange={(e) => setUnit(e.target.value)}
+          />
+        </Field>
         <Field label={t("ingredients.remark")} hint={t("common.optional")}>
           <TextArea
             value={remark}
@@ -375,11 +579,20 @@ function IngredientSheet({
             onChange={(e) => setGroupId(e.target.value)}
             className="min-h-11 w-full rounded-2xl border border-[var(--line)] bg-[var(--bg)] px-3 py-2.5 text-base"
           >
-            {groups.map((group) => (
-              <option key={group.id} value={group.id}>
-                {groupLabel(group, t)}
-              </option>
-            ))}
+            {tops.map((top) => {
+              const children = childrenOf(top.id);
+              return (
+                <Fragment key={top.id}>
+                  <option value={top.id}>{groupLabel(top, t)}</option>
+                  {children.map((child) => (
+                    <option key={child.id} value={child.id}>
+                      {"　└ "}
+                      {groupLabel(child, t)}
+                    </option>
+                  ))}
+                </Fragment>
+              );
+            })}
           </select>
         </Field>
         <div className="flex justify-end gap-2">

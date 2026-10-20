@@ -10,6 +10,18 @@ import type { AuthUser, UserRole } from "../src/types";
 export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 天
 const COOKIE_NAME = "ecolink_session";
 
+export const USER_ROLES: UserRole[] = [
+  "admin",
+  "editor",
+  "picker",
+  "packer",
+  "summarizer",
+];
+
+export function normalizeRole(value: unknown): UserRole {
+  return USER_ROLES.includes(value as UserRole) ? (value as UserRole) : "editor";
+}
+
 type UserRecord = {
   id: string;
   username: string;
@@ -72,7 +84,7 @@ export function createAuthStore(dataDir: string) {
   }
 
   function toPublic(user: UserRecord): AuthUser {
-    return { id: user.id, username: user.username, role: user.role };
+    return { id: user.id, username: user.username, role: normalizeRole(user.role) };
   }
 
   function listUsers() {
@@ -103,7 +115,7 @@ export function createAuthStore(dataDir: string) {
     const user: UserRecord = {
       id: `user-${crypto.randomUUID()}`,
       username: name,
-      role: role === "admin" ? "admin" : "editor",
+      role: normalizeRole(role),
       passwordHash: hashPassword(password),
       createdAt: Date.now(),
     };
@@ -139,7 +151,7 @@ export function createAuthStore(dataDir: string) {
     if (user.role === "admin" && role !== "admin" && adminCount(db.users) <= 1) {
       throw new Error("last-admin");
     }
-    user.role = role === "admin" ? "admin" : "editor";
+    user.role = normalizeRole(role);
     save(db);
   }
 

@@ -5,8 +5,14 @@ import type {
   Buyer,
   Group,
   Ingredient,
+  InvoiceRecord,
   Order,
   OrderTemplate,
+  PackRecord,
+  PickupRecord,
+  PurgePreview,
+  PurgeResult,
+  StorageStats,
 } from "../types";
 
 async function parseJson<T>(res: Response): Promise<T> {
@@ -85,6 +91,60 @@ export function saveOrder(order: Order) {
 
 export function saveTemplate(template: OrderTemplate) {
   return sendDb("/api/templates", post(template));
+}
+
+export function savePickupRecord(record: PickupRecord) {
+  return sendDb("/api/pickups", post(record));
+}
+
+export function savePackRecord(record: PackRecord) {
+  return sendDb("/api/packs", post(record));
+}
+
+export function saveInvoiceRecord(record: InvoiceRecord) {
+  return fetch("/api/invoices", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(record),
+  }).then((res) => parseJson<{ record: InvoiceRecord; db: AppDb }>(res));
+}
+
+export function deletePickupRecord(id: string) {
+  return sendDb(`/api/pickups/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export function deletePackRecord(id: string) {
+  return sendDb(`/api/packs/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export function previewPurge(from: string, to: string, includeInvoices = false) {
+  return fetch("/api/admin/purge/preview", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ from, to, includeInvoices }),
+  }).then((res) => parseJson<PurgePreview>(res));
+}
+
+export function purgeData(input: {
+  from: string;
+  to: string;
+  includeInvoices: boolean;
+  confirm: string;
+}) {
+  return fetch("/api/admin/purge", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  }).then((res) => parseJson<PurgeResult>(res));
+}
+
+export function fetchStorageStats() {
+  return fetch("/api/admin/storage", { credentials: "include" }).then((res) =>
+    parseJson<StorageStats>(res),
+  );
 }
 
 export function deleteRecord(

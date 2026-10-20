@@ -5,7 +5,10 @@
 //
 // 管理命令：
 //   node server.cjs create-admin <账号> <密码>     # 创建首个管理员
+//   node server.cjs create-user <账号> <密码> <角色> # 创建指定角色账号
+//   node server.cjs set-role <账号> <角色>          # 修改账号角色
 //   node server.cjs reset-password <账号> <新密码> # 忘记密码时重置
+// 角色：admin / editor / picker / packer / summarizer
 //
 // 环境变量：
 //   PORT                 监听端口，默认 3000（仅本机）
@@ -14,7 +17,11 @@
 //   ECOLINK_AUTH=1       开启账号密码登录（云端必开；本地默认关闭）
 
 import path from "node:path";
-import { createAuthStore } from "../server/authStore";
+import {
+  createAuthStore,
+  normalizeRole,
+  USER_ROLES,
+} from "../server/authStore";
 import { startLocalServer } from "../server/standalone";
 
 const port = Number(process.env.PORT ?? 3000);
@@ -26,18 +33,64 @@ const staticDir = path.resolve(
 );
 const authEnabled = process.env.ECOLINK_AUTH === "1";
 
-const [, , command, arg1, arg2] = process.argv;
+const [, , command, arg1, arg2, arg3] = process.argv;
 
-function runAdminCommand(): boolean {
-  if (command !== "create-admin" && command !== "reset-password") return false;
-  if (!arg1 || !arg2) {
-    console.error(`用法：node server.cjs ${command} <账号> <密码>`);
+function validRole(value: string | undefined) {
+  if (!value || !USER_ROLES.includes(value as (typeof USER_ROLES)[number])) {
+    console.error(`角色必须是：${USER_ROLES.join(" / ")}`);
     process.exit(1);
   }
+  return normalizeRole(value);
+}
+
+function runAdminCommand(): boolean {
+  if (
+    command !== "create-admin" &&
+    command !== "create-user" &&
+    command !== "set-role" &&
+    command !== "reset-password"
+  ) {
+    return false;
+  }
+
+  if (command === "set-role") {
+    if (!arg1 || !arg2) {
+      console.error("用法：node server.cjs set-role <账号> <角色>");
+      process.exit(1);
+    }
+    const auth = createAuthStore(dataDir);
+    const user = auth.findByUsername(arg1);
+    if (!user) {
+      console.error(`用户不存在：${arg1}`);
+      process.exit(1);
+    }
+    const role = validRole(arg2);
+    auth.setRole(user.id, role);
+    console.log(`已修改角色：${user.username} → ${role}`);
+    process.exit(0);
+  }
+
+  if (!arg1 || !arg2) {
+    console.error(
+      command === "create-user"
+        ? "用法：node server.cjs create-user <账号> <密码> <角色>"
+        : `用法：node server.cjs ${command} <账号> <密码>`,
+    );
+    process.exit(1);
+  }
+
   const auth = createAuthStore(dataDir);
   if (command === "create-admin") {
     const user = auth.createUser(arg1, arg2, "admin");
     console.log(`已创建管理员：${user.username}`);
+  } else if (command === "create-user") {
+    if (!arg3) {
+      console.error("用法：node server.cjs create-user <账号> <密码> <角色>");
+      process.exit(1);
+    }
+    const role = validRole(arg3);
+    const user = auth.createUser(arg1, arg2, role);
+    console.log(`已创建账号：${user.username}（${role}）`);
   } else {
     const user = auth.findByUsername(arg1);
     if (!user) {

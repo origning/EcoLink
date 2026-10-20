@@ -5,8 +5,14 @@ import type {
   Buyer,
   Group,
   Ingredient,
+  InvoiceRecord,
   Order,
   OrderTemplate,
+  PackRecord,
+  PickupRecord,
+  PurgePreview,
+  PurgeResult,
+  StorageStats,
 } from "../types";
 import * as httpDb from "../api/httpDb";
 import { normalizeDb } from "./normalizeDb";
@@ -16,14 +22,28 @@ import {
   idbFetchDb,
   idbHydrateImageUrls,
   idbImageUrl,
+  idbPreviewPurge,
+  idbPurgeData,
   idbPutBackup,
   idbPutDb,
   idbPutImages,
+  idbStorageStats,
 } from "./idb";
 
 export type StorageKind = "files" | "device";
 
-type CollectionKey = "groups" | "ingredients" | "buyers" | "orders" | "templates";
+type EntityCollectionKey =
+  | "groups"
+  | "ingredients"
+  | "buyers"
+  | "orders"
+  | "templates";
+
+type CollectionKey =
+  | EntityCollectionKey
+  | "pickupRecords"
+  | "packRecords"
+  | "invoiceRecords";
 
 let kind: StorageKind | null = null;
 let initPromise: Promise<StorageKind> | null = null;
@@ -128,7 +148,66 @@ export async function saveTemplate(template: OrderTemplate) {
     : mutateLocal("templates", template);
 }
 
-export async function deleteRecord(key: CollectionKey, id: string) {
+export async function savePickupRecord(record: PickupRecord) {
+  await initStorage();
+  return kind === "files"
+    ? httpDb.savePickupRecord(record)
+    : mutateLocal("pickupRecords", record);
+}
+
+export async function savePackRecord(record: PackRecord) {
+  await initStorage();
+  return kind === "files"
+    ? httpDb.savePackRecord(record)
+    : mutateLocal("packRecords", record);
+}
+
+export async function saveInvoiceRecord(record: InvoiceRecord) {
+  await initStorage();
+  if (kind === "files") return httpDb.saveInvoiceRecord(record);
+  const db = await idbFetchDb();
+  if (db.invoiceRecords.some((item) => item.invoiceNo === record.invoiceNo)) {
+    throw new Error("invoice-number-taken");
+  }
+  db.invoiceRecords = [...db.invoiceRecords, record];
+  if (record.invoiceNumber >= db.settings.invoice.nextInvoiceNumber) {
+    db.settings.invoice.nextInvoiceNumber = record.invoiceNumber + 1;
+  }
+  const next = await idbPutDb(db);
+  return { record, db: next };
+}
+
+export async function deletePickupRecord(id: string) {
+  await initStorage();
+  if (kind === "files") return httpDb.deletePickupRecord(id);
+  const db = await idbFetchDb();
+  const record = db.pickupRecords.find((item) => item.id === id);
+  const next = await removeLocal("pickupRecords", id);
+  for (const photo of [
+    ...(record?.photos ?? []),
+    ...(record?.invoicePhotos ?? []),
+  ]) {
+    await idbDeleteImages(photo.id);
+  }
+  return next;
+}
+
+export async function deletePackRecord(id: string) {
+  await initStorage();
+  if (kind === "files") return httpDb.deletePackRecord(id);
+  const db = await idbFetchDb();
+  const record = db.packRecords.find((item) => item.id === id);
+  const next = await removeLocal("packRecords", id);
+  for (const photo of [
+    ...(record?.photos ?? []),
+    ...(record?.invoicePhotos ?? []),
+  ]) {
+    await idbDeleteImages(photo.id);
+  }
+  return next;
+}
+
+export async function deleteRecord(key: EntityCollectionKey, id: string) {
   await initStorage();
   return kind === "files" ? httpDb.deleteRecord(key, id) : removeLocal(key, id);
 }
@@ -172,4 +251,30 @@ export async function fetchBackup() {
 export async function putBackup(payload: BackupFile) {
   await initStorage();
   return kind === "files" ? httpDb.putBackup(payload) : idbPutBackup(payload);
+}
+
+export async function previewPurge(
+  from: string,
+  to: string,
+  includeInvoices = false,
+): Promise<PurgePreview> {
+  await initStorage();
+  return kind === "files"
+    ? httpDb.previewPurge(from, to, includeInvoices)
+    : idbPreviewPurge(from, to, includeInvoices);
+}
+
+export async function purgeData(input: {
+  from: string;
+  to: string;
+  includeInvoices: boolean;
+  confirm: string;
+}): Promise<PurgeResult> {
+  await initStorage();
+  return kind === "files" ? httpDb.purgeData(input) : idbPurgeData(input);
+}
+
+export async function fetchStorageStats(): Promise<StorageStats> {
+  await initStorage();
+  return kind === "files" ? httpDb.fetchStorageStats() : idbStorageStats();
 }

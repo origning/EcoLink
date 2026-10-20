@@ -2,14 +2,19 @@ import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "./components/AppShell";
+import { RequireRole } from "./components/RequireRole";
 import { BuyersPage } from "./pages/BuyersPage";
 import { DataPage } from "./pages/DataPage";
 import { IngredientsPage } from "./pages/IngredientsPage";
+import { InvoicesPage } from "./pages/InvoicesPage";
 import { LoginPage } from "./pages/LoginPage";
 import { OrdersPage } from "./pages/OrdersPage";
+import { PackingPage } from "./pages/PackingPage";
+import { PickupPage } from "./pages/PickupPage";
 import { SummaryPage } from "./pages/SummaryPage";
 import { useAppStore } from "./store/useAppStore";
 import { useAuthStore } from "./store/useAuthStore";
+import { homeForRole } from "./utils/roles";
 
 export default function App() {
   const { t } = useTranslation();
@@ -53,14 +58,79 @@ export default function App() {
     <HashRouter>
       <Routes>
         <Route element={<AppShell />}>
-          <Route path="/" element={<IngredientsPage />} />
-          <Route path="/buyers" element={<BuyersPage />} />
-          <Route path="/orders" element={<OrdersPage />} />
-          <Route path="/summary" element={<SummaryPage />} />
-          <Route path="/data" element={<DataPage />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="/" element={<RoleHome />} />
+          <Route
+            path="/ingredients"
+            element={
+              <RequireRole roles={["admin"]}>
+                <IngredientsPage />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/buyers"
+            element={
+              <RequireRole roles={["admin"]}>
+                <BuyersPage />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/orders"
+            element={
+              <RequireRole roles={["admin", "editor"]}>
+                <OrdersPage />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/pickups"
+            element={
+              <RequireRole roles={["admin", "picker"]}>
+                <PickupPage />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/packing"
+            element={
+              <RequireRole roles={["admin", "packer"]}>
+                <PackingPage />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/summary"
+            element={
+              <RequireRole roles={["admin", "summarizer"]}>
+                <SummaryPage />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/invoices"
+            element={
+              <RequireRole roles={["admin", "summarizer"]}>
+                <InvoicesPage />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/data"
+            element={
+              <RequireRole roles={["admin"]}>
+                <DataPage />
+              </RequireRole>
+            }
+          />
+          <Route path="*" element={<RoleHome />} />
         </Route>
       </Routes>
     </HashRouter>
   );
+}
+
+function RoleHome() {
+  const user = useAuthStore((state) => state.user);
+  return <Navigate to={homeForRole(user?.role ?? "admin")} replace />;
 }
