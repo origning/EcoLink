@@ -64,14 +64,10 @@ export function LoginPage() {
               className="absolute -bottom-32 -left-24 h-[22rem] w-[22rem] rounded-full bg-[rgba(234,88,12,0.14)] blur-3xl"
             />
 
-            <div className="relative flex items-center gap-2.5">
-              <BrandMark size={36} />
-              <div>
-                <p className="text-[15px] font-semibold leading-tight">EcoLink</p>
-                <p className="mt-0.5 text-[9px] font-semibold uppercase tracking-[0.16em] text-white/40">
-                  Procurement
-                </p>
-              </div>
+            <div className="relative flex items-center">
+              <span className="inline-flex h-14 items-center rounded-[16px] bg-white px-3 shadow-[0_16px_32px_-18px_rgba(0,0,0,0.7)]">
+                <BrandMark size={38} />
+              </span>
             </div>
 
             <div className="relative py-10">
@@ -102,9 +98,8 @@ export function LoginPage() {
           <div className="relative flex flex-col justify-center p-6 sm:p-10 lg:p-12">
             <div className="mx-auto w-full max-w-[320px]">
               <div className="mb-8 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2.5 lg:hidden">
-                  <BrandMark size={32} />
-                  <span className="text-sm font-bold tracking-tight">EcoLink</span>
+                <div className="flex items-center lg:hidden">
+                  <BrandMark size={34} />
                 </div>
                 <div className="ml-auto flex rounded-[9px] border border-[var(--line)] bg-[var(--surface)] p-0.5">
                   {(["zh", "en"] as const).map((lang) => (

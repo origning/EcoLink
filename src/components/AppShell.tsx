@@ -73,16 +73,12 @@ export function AppShell() {
     <div className="min-h-dvh">
       <header className="sticky top-0 z-30 border-b border-[var(--line)] bg-[color-mix(in_srgb,white_86%,transparent)] backdrop-blur-xl">
         <div className="mx-auto flex h-[60px] w-full max-w-[1400px] items-center gap-3 px-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] lg:px-8 xl:gap-5">
-          <Link to="/" className="flex min-w-0 shrink-0 items-center gap-2.5">
-            <BrandMark size={32} />
-            <span className="min-w-0">
-              <span className="block truncate text-[15px] font-bold leading-tight tracking-tight">
-                {t("appName")}
-              </span>
-              <span className="mt-0.5 hidden text-[9px] font-semibold uppercase tracking-[0.16em] text-[var(--muted-2)] sm:block">
-                Procurement
-              </span>
-            </span>
+          <Link
+            to="/"
+            aria-label={t("appName")}
+            className="flex min-w-0 shrink-0 items-center"
+          >
+            <BrandMark size={40} alt="" />
           </Link>
 
           <nav className="hidden min-w-0 items-center gap-0.5 lg:flex">

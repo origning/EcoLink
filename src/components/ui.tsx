@@ -3,34 +3,20 @@ import type { InputHTMLAttributes, ReactNode, TextareaHTMLAttributes } from "rea
 export function BrandMark({
   size = 34,
   className = "",
+  alt = "EcoLink",
 }: {
   size?: number;
   className?: string;
+  alt?: string;
 }) {
   return (
-    <span
-      aria-hidden
-      className={`inline-grid shrink-0 place-items-center rounded-[11px] text-white shadow-[0_8px_16px_-8px_rgba(194,65,12,0.6),inset_0_1px_0_rgba(255,255,255,0.24)] ${className}`}
-      style={{
-        width: size,
-        height: size,
-        background: "linear-gradient(140deg,#fb923c,#ea580c 55%,#c2410c)",
-      }}
-    >
-      <svg
-        width={Math.round(size * 0.56)}
-        height={Math.round(size * 0.56)}
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.9"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M10 13.5a4 4 0 0 0 5.7 0l2.8-2.8a4 4 0 0 0-5.7-5.7L11.2 6.6" />
-        <path d="M14 10.5a4 4 0 0 0-5.7 0l-2.8 2.8a4 4 0 0 0 5.7 5.7l1.6-1.6" />
-      </svg>
-    </span>
+    <img
+      src={`${import.meta.env.BASE_URL}ecolink-logo.png`}
+      alt={alt}
+      draggable={false}
+      className={`shrink-0 object-contain ${className}`}
+      style={{ height: size, width: "auto" }}
+    />
   );
 }
 
