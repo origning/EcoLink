@@ -1,4 +1,6 @@
+import { useEffect } from "react";
 import type { InputHTMLAttributes, ReactNode, TextareaHTMLAttributes } from "react";
+import { createPortal } from "react-dom";
 
 export function BrandMark({
   size = 34,
@@ -237,8 +239,17 @@ export function Sheet({
   onClose: () => void;
   wide?: boolean;
 }) {
-  return (
-    <div className="backdrop-in fixed inset-0 z-40 flex items-end justify-center bg-black/40 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur-[2px] sm:items-center sm:p-4">
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
+
+  const content = (
+    <div className="backdrop-in fixed inset-0 z-40 flex items-end justify-center overscroll-contain bg-black/40 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur-[2px] sm:items-center sm:p-4">
       <div
         className={`sheet-in flex max-h-[min(90dvh,calc(100dvh-env(safe-area-inset-top)-1rem))] w-full flex-col overflow-hidden rounded-[24px] bg-white shadow-[0_32px_80px_-24px_rgba(23,23,23,0.45)] ${
           wide
@@ -265,6 +276,10 @@ export function Sheet({
       </div>
     </div>
   );
+
+  return typeof document === "undefined"
+    ? content
+    : createPortal(content, document.body);
 }
 
 export function Thumb({
