@@ -37,7 +37,6 @@ export function InvoiceReceiptSheet({
   const [amount, setAmount] = useState(
     outstanding > 0 ? String(outstanding) : "",
   );
-  const [method, setMethod] = useState("bank");
   const [note, setNote] = useState("");
   const [proofPhotos, setProofPhotos] = useState<DraftPhoto[]>([]);
   const [busy, setBusy] = useState(false);
@@ -122,7 +121,7 @@ export function InvoiceReceiptSheet({
               void onAdd({
                 date,
                 amount: value,
-                method,
+                method: "",
                 note,
                 proofPhotos: proofPhotos.map((photo) => ({
                   id: photo.id,
@@ -155,17 +154,6 @@ export function InvoiceReceiptSheet({
                 />
               </Field>
             </div>
-            <Field label={t("pickups.paymentMethod")}>
-              <select
-                value={method}
-                onChange={(event) => setMethod(event.target.value)}
-                className="min-h-11 w-full rounded-2xl border border-[var(--line)] bg-[var(--bg)] px-3 py-2.5 text-base"
-              >
-                <option value="bank">{t("pickups.paymentBank")}</option>
-                <option value="cash">{t("pickups.paymentCash")}</option>
-                <option value="other">{t("pickups.paymentOther")}</option>
-              </select>
-            </Field>
             <Field label={t("pickups.paymentNote")} hint={t("common.optional")}>
               <TextInput
                 value={note}

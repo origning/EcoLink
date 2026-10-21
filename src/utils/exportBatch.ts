@@ -212,6 +212,13 @@ function invoicePage(item: BatchExportItem, labels: BatchPrintLabels) {
       )}</strong></p>
     </div>
     ${
+      snapshot.ingredientCategories.length > 0
+        ? `<p class="note"><strong>Ingredient categories:</strong> ${escapeHtml(
+            snapshot.ingredientCategories.join(", "),
+          )}</p>`
+        : ""
+    }
+    ${
       bank
         ? `<p class="note"><strong>${escapeHtml(
             labels.bankDetails,

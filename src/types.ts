@@ -206,6 +206,8 @@ export type InvoiceSnapshot = {
   dueDays: number;
   billTo: { name: string; address: string; phone: string };
   shipTo: { name: string; address: string; phone: string };
+  /** 这张发票包含的食材类别名称（替代具体产品明细） */
+  ingredientCategories: string[];
   lines: InvoiceLineRecord[];
   subtotal: number;
   tax: number;

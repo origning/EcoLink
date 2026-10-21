@@ -1,8 +1,10 @@
 import { saveAs } from "file-saver";
 import type { Workbook } from "exceljs";
 import { downloadHtmlAsPdf } from "./pdf";
+import i18n from "../i18n";
 import type {
   Buyer,
+  Group,
   InvoiceSettings,
   InvoiceSnapshot,
   SummaryMatrix,
@@ -59,6 +61,7 @@ export type InvoiceLine = {
 
 export type InvoiceData = {
   lines: InvoiceLine[];
+  ingredientCategories: string[];
   subtotal: number;
   tax: number;
   total: number;
@@ -66,6 +69,15 @@ export type InvoiceData = {
   dueDate: Date;
   invoiceNo: string;
 };
+
+function categoryLabel(group: Group | undefined, parent?: Group) {
+  const labelFor = (item: Group | undefined) => {
+    if (!item || item.id === "__deleted") return i18n.t("common.deletedItem");
+    if (item.i18nKey) return i18n.t(`groups.${item.i18nKey}`);
+    return item.name || i18n.t("common.unnamed");
+  };
+  return parent ? `${labelFor(parent)} / ${labelFor(group)}` : labelFor(group);
+}
 
 export function buildInvoiceData(
   matrix: SummaryMatrix,
@@ -77,30 +89,28 @@ export function buildInvoiceData(
     issueDate.getTime() + Math.max(0, settings.dueDays) * 24 * 60 * 60 * 1000,
   );
 
-  const lines = matrix.sections.flatMap((section) =>
-    section.rows.map((row) => {
-      const quantity = row.total;
-      const price = row.ingredient.price ?? 0;
-      const description = [
-        row.ingredient.nameEn || row.ingredient.name || row.ingredient.code,
-        row.ingredient.unit,
-      ]
-        .filter(Boolean)
-        .join(" ");
+  const lines = matrix.sections
+    .map((section) => {
+      const amount = section.rows.reduce(
+        (sum, row) => sum + row.total * (row.ingredient.price ?? 0),
+        0,
+      );
       return {
-        description,
-        quantity,
-        price,
-        amount: quantity * price,
+        description: categoryLabel(section.group, section.parent),
+        quantity: 1,
+        price: amount,
+        amount,
       };
-    }),
-  );
+    })
+    .filter((line) => line.amount !== 0 || line.description);
+  const ingredientCategories = lines.map((line) => line.description);
 
   const subtotal = lines.reduce((sum, line) => sum + line.amount, 0);
-  const tax = settings.taxAmount;
+  const tax = Number(settings.taxAmount) || 0;
 
   return {
     lines,
+    ingredientCategories,
     subtotal,
     tax,
     total: subtotal + tax,
@@ -132,7 +142,16 @@ export function addInvoiceSheet(
   shipTo?: Buyer,
 ) {
   const data = override ?? buildInvoiceData(matrix, settings, invoiceNumber);
-  const { lines, subtotal, tax, total, issueDate, dueDate, invoiceNo } = data;
+  const {
+    lines,
+    ingredientCategories,
+    subtotal,
+    tax,
+    total,
+    issueDate,
+    dueDate,
+    invoiceNo,
+  } = data;
 
   workbook.creator = settings.companyName || "EcoLink";
   const sheet = workbook.addWorksheet("Invoice", {
@@ -319,7 +338,7 @@ export function addInvoiceSheet(
   const totals: { label: string; value: number; bold?: boolean; size?: number }[] =
     [
       { label: "Subtotal", value: subtotal },
-      ...(tax > 0 ? [{ label: "Tax", value: tax }] : []),
+      ...(tax > 0 ? [{ label: "GST", value: tax }] : []),
       { label: "Total", value: total, bold: true },
       { label: "Amount due", value: total, bold: true, size: 12 },
     ];
@@ -359,6 +378,13 @@ export function addInvoiceSheet(
     rowIndex += 1;
   };
 
+  if (ingredientCategories.length > 0) {
+    writeNote(
+      `Ingredient categories: ${ingredientCategories.join(", ")}`,
+      [1, lastCol],
+    );
+    rowIndex += 1;
+  }
   for (const line of settings.paymentNote.split(/\r?\n/)) {
     writeNote(line, [1, 3]);
   }
@@ -452,7 +478,16 @@ export function buildInvoiceHtml(
   shipTo?: Buyer,
 ) {
   const data = override ?? buildInvoiceData(matrix, settings, invoiceNumber);
-  const { lines, subtotal, tax, total, issueDate, dueDate, invoiceNo } = data;
+  const {
+    lines,
+    ingredientCategories,
+    subtotal,
+    tax,
+    total,
+    issueDate,
+    dueDate,
+    invoiceNo,
+  } = data;
 
   const billHtml = `
     <div>${escapeHtml(buyer.name)}</div>
@@ -592,7 +627,7 @@ export function buildInvoiceHtml(
       <div class="row"><span>Subtotal</span><span>${formatAmount(subtotal)}</span></div>
       ${
         tax > 0
-          ? `<div class="row"><span>Tax</span><span>${formatAmount(tax)}</span></div>`
+          ? `<div class="row"><span>GST</span><span>${formatAmount(tax)}</span></div>`
           : ""
       }
       <div class="row"><span>Total</span><span>${formatAmount(total)}</span></div>
@@ -602,6 +637,13 @@ export function buildInvoiceHtml(
     </div>
 
     <div class="notes">
+      ${
+        ingredientCategories.length > 0
+          ? `<div class="block"><strong>Ingredient categories:</strong> ${escapeHtml(
+              ingredientCategories.join(", "),
+            )}</div>`
+          : ""
+      }
       <div class="block">${htmlLines(settings.paymentNote)}</div>
       <div class="block bank">
         <div>Bank: ${escapeHtml(settings.bankName)}</div>
@@ -669,6 +711,7 @@ function invoiceDataFromSnapshot(
 ): InvoiceData {
   return {
     lines: snapshot.lines,
+    ingredientCategories: snapshot.ingredientCategories,
     subtotal: snapshot.subtotal,
     tax: snapshot.tax,
     total: snapshot.total,

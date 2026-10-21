@@ -337,6 +337,12 @@ export function normalizeInvoiceRecord(
         address: text(shipTo.address),
         phone: text(shipTo.phone),
       },
+      ingredientCategories: Array.isArray(snapshotInput.ingredientCategories)
+        ? snapshotInput.ingredientCategories
+            .filter((item): item is string => typeof item === "string")
+            .map((item) => item.trim())
+            .filter(Boolean)
+        : [],
       lines,
       subtotal: number(snapshotInput.subtotal),
       tax: number(snapshotInput.tax),

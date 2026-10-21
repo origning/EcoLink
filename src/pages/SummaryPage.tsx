@@ -563,6 +563,7 @@ export function initialInvoiceSnapshot(
     dueDays: settings.dueDays,
     billTo: { name: buyer.name, address: buyer.address, phone: buyer.phone },
     shipTo: { name: buyer.name, address: buyer.address, phone: buyer.phone },
+    ingredientCategories: data.ingredientCategories,
     lines: data.lines.map((line) => ({ ...line })),
     subtotal: data.subtotal,
     tax: data.tax,
@@ -898,6 +899,23 @@ export function InvoiceEditSheet({
             </div>
           ))}
         </div>
+
+        <Field
+          label={t("invoice.ingredientCategories")}
+          hint={t("invoice.ingredientCategoriesHint")}
+        >
+          <TextInput
+            value={snapshot.ingredientCategories.join("、")}
+            onChange={(event) =>
+              update({
+                ingredientCategories: event.target.value
+                  .split(/[、,，]/)
+                  .map((item) => item.trim())
+                  .filter(Boolean),
+              })
+            }
+          />
+        </Field>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label={t("invoice.taxAmount")} hint={t("common.optional")}>

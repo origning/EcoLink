@@ -525,6 +525,12 @@ export function InvoicesPage() {
                         {" · "}
                         {t("invoice.createdBy")}: {record.createdByName}
                       </p>
+                      {record.snapshot.ingredientCategories.length > 0 ? (
+                        <p>
+                          {t("invoice.ingredientCategories")}:{" "}
+                          {record.snapshot.ingredientCategories.join("、")}
+                        </p>
+                      ) : null}
                       <p>
                         {t("packing.received")}:{" "}
                         {formatMoney(
@@ -726,6 +732,23 @@ function InvoiceRecordSheet({
             />
           </Field>
         </div>
+
+        <Field
+          label={t("invoice.ingredientCategories")}
+          hint={t("invoice.ingredientCategoriesHint")}
+        >
+          <TextInput
+            value={snapshot.ingredientCategories.join("、")}
+            onChange={(event) =>
+              update({
+                ingredientCategories: event.target.value
+                  .split(/[、,，]/)
+                  .map((item) => item.trim())
+                  .filter(Boolean),
+              })
+            }
+          />
+        </Field>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label={t("invoice.currency")} hint={t("common.required")}>
