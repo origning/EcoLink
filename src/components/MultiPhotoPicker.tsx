@@ -1,5 +1,7 @@
 import { useState } from "react";
-import { compressPhoto } from "../utils/compressImage";
+import { blobToBase64, compressPhoto } from "../utils/compressImage";
+
+const MAX_PDF_BYTES = 10 * 1024 * 1024;
 
 export type DraftPhoto = {
   key: string;
@@ -9,7 +11,33 @@ export type DraftPhoto = {
   previewBase64?: string;
   thumbBase64?: string;
   bytes?: number;
+  /** PDF 附件使用文件图标展示，点击后在新窗口打开 */
+  isPdf?: boolean;
 };
+
+function isPdfFile(file: File) {
+  return (
+    file.type === "application/pdf" || /\.pdf$/i.test(file.name)
+  );
+}
+
+async function pdfThumbnail() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 160;
+  canvas.height = 160;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas unsupported");
+  ctx.fillStyle = "#fef2f2";
+  ctx.fillRect(0, 0, 160, 160);
+  ctx.fillStyle = "#dc2626";
+  ctx.fillRect(34, 22, 92, 116);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 28px sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("PDF", 80, 82);
+  return canvas.toDataURL("image/jpeg", 0.8).split(",")[1] ?? "";
+}
 
 export function MultiPhotoPicker({
   photos,
@@ -38,6 +66,22 @@ export function MultiPhotoPicker({
     setBusy(true);
     try {
       for (const file of files) {
+        if (isPdfFile(file)) {
+          if (file.size > MAX_PDF_BYTES) throw new Error("too-large");
+          const baseId = nextId();
+          const id = baseId.endsWith("-pdf") ? baseId : `${baseId}-pdf`;
+          onAdd({
+            key: id,
+            id,
+            rev: 1,
+            previewUrl: URL.createObjectURL(file),
+            previewBase64: await blobToBase64(file),
+            thumbBase64: await pdfThumbnail(),
+            bytes: file.size,
+            isPdf: true,
+          });
+          continue;
+        }
         const result = await compressPhoto(file, {
           maxEdge: 1600,
           quality: 0.8,
@@ -70,11 +114,23 @@ export function MultiPhotoPicker({
             key={photo.key}
             className="relative h-20 w-20 overflow-hidden rounded-2xl bg-[var(--brand-soft)]"
           >
-            <img
-              src={photo.previewUrl}
-              alt=""
-              className="h-full w-full object-cover"
-            />
+            {photo.isPdf ? (
+              <a
+                href={photo.previewUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="flex h-full w-full flex-col items-center justify-center bg-red-50 text-red-700"
+                title="PDF"
+              >
+                <span className="text-xl font-bold leading-none">PDF</span>
+              </a>
+            ) : (
+              <img
+                src={photo.previewUrl}
+                alt=""
+                className="h-full w-full object-cover"
+              />
+            )}
             <button
               type="button"
               aria-label={labels.remove}
@@ -95,7 +151,7 @@ export function MultiPhotoPicker({
           <span className="mt-1 px-1">{busy ? labels.busy : labels.add}</span>
           <input
             type="file"
-            accept="image/*"
+            accept="image/*,application/pdf"
             multiple
             className="sr-only"
             disabled={busy}

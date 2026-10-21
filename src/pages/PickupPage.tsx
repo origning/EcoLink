@@ -37,6 +37,7 @@ function toDraftPhotos(photos: PhotoRef[]): DraftPhoto[] {
     id: photo.id,
     rev: photo.rev,
     previewUrl: ingredientPreviewUrl(photo.id, photo.rev),
+    isPdf: photo.id.endsWith("-pdf"),
   }));
 }
 
@@ -1266,14 +1267,6 @@ function PickupSheet({
             flash({ type: "error", message: t("pickups.needStore") });
             return;
           }
-          if (photos.length === 0) {
-            flash({ type: "error", message: t("pickups.needPhoto") });
-            return;
-          }
-          if (!initial && invoicePhotos.length === 0) {
-            flash({ type: "error", message: t("pickups.needInvoicePhoto") });
-            return;
-          }
           setBusy(true);
           void onSave({
             id,
@@ -1353,7 +1346,7 @@ function PickupSheet({
             ))}
           </select>
         </Field>
-        <Field label={t("pickups.photos")} hint={t("common.required")}>
+        <Field label={t("pickups.photos")} hint={t("common.optional")}>
           <MultiPhotoPicker
             photos={photos}
             nextId={() => `${id}-photo-${crypto.randomUUID()}`}
@@ -1380,7 +1373,7 @@ function PickupSheet({
         </Field>
         <Field
           label={t("pickups.invoicePhotos")}
-          hint={initial ? t("common.optional") : t("common.required")}
+          hint={t("common.optional")}
         >
           <MultiPhotoPicker
             photos={invoicePhotos}

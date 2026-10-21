@@ -26,6 +26,7 @@ function toDraftPhotos(photos: PhotoRef[]): DraftPhoto[] {
     id: photo.id,
     rev: photo.rev,
     previewUrl: ingredientPreviewUrl(photo.id, photo.rev),
+    isPdf: photo.id.endsWith("-pdf"),
   }));
 }
 
@@ -173,7 +174,7 @@ export function UploadPage() {
               const existing =
                 editing === "new" ? null : (editing as PickupRecord | null);
               await savePickup({
-                id: existing?.id,
+                id: existing?.id ?? input.id,
                 date: input.date,
                 storeName: existing?.storeName ?? "",
                 tax: existing?.tax ?? 0,
@@ -187,7 +188,7 @@ export function UploadPage() {
               const existing =
                 editing === "new" ? null : (editing as PackRecord | null);
               await savePack({
-                id: existing?.id,
+                id: existing?.id ?? input.id,
                 date: input.date,
                 logistics: existing?.logistics ?? "",
                 trackingNo: existing?.trackingNo ?? "",
@@ -218,6 +219,7 @@ function UploadSheet({
   initial: PickupRecord | PackRecord | null;
   onClose: () => void;
   onSave: (input: {
+    id: string;
     date: string;
     note: string;
     photos: {
@@ -269,12 +271,9 @@ function UploadSheet({
             flash({ type: "error", message: t("upload.needDate") });
             return;
           }
-          if (photos.length === 0) {
-            flash({ type: "error", message: t("upload.needPhoto") });
-            return;
-          }
           setBusy(true);
           void onSave({
+            id,
             date,
             note: note.trim(),
             photos: photos.map((photo) => ({
@@ -306,7 +305,7 @@ function UploadSheet({
           label={
             kind === "pickup" ? t("upload.pickupPhotos") : t("upload.packPhotos")
           }
-          hint={t("common.required")}
+          hint={t("common.optional")}
         >
           <MultiPhotoPicker
             photos={photos}

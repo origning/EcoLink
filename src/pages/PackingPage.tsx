@@ -35,6 +35,7 @@ function toDraftPhotos(photos: PhotoRef[]): DraftPhoto[] {
     id: photo.id,
     rev: photo.rev,
     previewUrl: ingredientPreviewUrl(photo.id, photo.rev),
+    isPdf: photo.id.endsWith("-pdf"),
   }));
 }
 
@@ -424,14 +425,6 @@ function PackingSheet({
             flash({ type: "error", message: t("packing.needBuyer") });
             return;
           }
-          if (photos.length === 0) {
-            flash({ type: "error", message: t("packing.needPhoto") });
-            return;
-          }
-          if (!initial && invoicePhotos.length === 0) {
-            flash({ type: "error", message: t("packing.needInvoicePhoto") });
-            return;
-          }
           setBusy(true);
           void onSave({
             id,
@@ -562,7 +555,7 @@ function PackingSheet({
             </p>
           ) : null}
         </div>
-        <Field label={t("packing.photos")} hint={t("common.required")}>
+        <Field label={t("packing.photos")} hint={t("common.optional")}>
           <MultiPhotoPicker
             photos={photos}
             nextId={() => `${id}-photo-${crypto.randomUUID()}`}
@@ -589,7 +582,7 @@ function PackingSheet({
         </Field>
         <Field
           label={t("packing.invoicePhotos")}
-          hint={initial ? t("common.optional") : t("common.required")}
+          hint={t("common.optional")}
         >
           <MultiPhotoPicker
             photos={invoicePhotos}

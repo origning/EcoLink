@@ -40,6 +40,7 @@ const BACKUP_FORMAT = "ecolink-backup";
 const BACKUP_VERSION = 1;
 const MAX_BACKUP_BYTES = 80 * 1024 * 1024;
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+const MAX_PDF_BYTES = 10 * 1024 * 1024;
 const MAX_THUMB_BYTES = 512 * 1024;
 
 type CollectionKey =
@@ -200,9 +201,12 @@ export function createFileStore(
   function imagePath(id: string, kind: "preview" | "thumb") {
     const safe = id.replace(/[^a-zA-Z0-9_-]/g, "");
     if (!safe || safe !== id) return null;
+    const isPdf = id.endsWith("-pdf");
     return path.join(
       imagesDir,
-      kind === "thumb" ? `${safe}.thumb.jpg` : `${safe}.jpg`,
+      kind === "thumb"
+        ? `${safe}.thumb.jpg`
+        : `${safe}.${isPdf ? "pdf" : "jpg"}`,
     );
   }
 
@@ -213,7 +217,13 @@ export function createFileStore(
     }
     const data = fs.readFileSync(filePath);
     res.statusCode = 200;
-    res.setHeader("Content-Type", "image/jpeg");
+    res.setHeader(
+      "Content-Type",
+      filePath.endsWith(".pdf") ? "application/pdf" : "image/jpeg",
+    );
+    if (filePath.endsWith(".pdf")) {
+      res.setHeader("Content-Disposition", "inline");
+    }
     res.setHeader("Cache-Control", "no-cache");
     res.end(data);
   }
@@ -250,7 +260,9 @@ export function createFileStore(
     ensureData();
     const ids = new Set<string>();
     for (const file of fs.readdirSync(imagesDir)) {
-      const match = file.match(/^([a-zA-Z0-9_-]+)(?:\.thumb)?\.jpg$/);
+      const match = file.match(
+        /^([a-zA-Z0-9_-]+?)(?:\.thumb)?\.(?:jpg|pdf)$/,
+      );
       if (match) ids.add(match[1]);
     }
     return [...ids];
@@ -1386,7 +1398,13 @@ export function createFileStore(
           sendJson(res, 400, { error: "Both preview and thumb are required" });
           return;
         }
-        if (preview.length > MAX_IMAGE_BYTES || thumb.length > MAX_THUMB_BYTES) {
+        const maxPreviewBytes = id.endsWith("-pdf")
+          ? MAX_PDF_BYTES
+          : MAX_IMAGE_BYTES;
+        if (
+          preview.length > maxPreviewBytes ||
+          thumb.length > MAX_THUMB_BYTES
+        ) {
           sendJson(res, 413, { error: "image-too-large" });
           return;
         }
