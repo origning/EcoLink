@@ -174,10 +174,23 @@ export async function saveInvoiceRecord(record: InvoiceRecord) {
   await initStorage();
   if (kind === "files") return httpDb.saveInvoiceRecord(record);
   const db = await idbFetchDb();
-  if (db.invoiceRecords.some((item) => item.invoiceNo === record.invoiceNo)) {
+  const existingIndex = db.invoiceRecords.findIndex(
+    (item) => item.id === record.id,
+  );
+  if (
+    db.invoiceRecords.some(
+      (item) => item.id !== record.id && item.invoiceNo === record.invoiceNo,
+    )
+  ) {
     throw new Error("invoice-number-taken");
   }
-  db.invoiceRecords = [...db.invoiceRecords, record];
+  if (existingIndex >= 0) {
+    db.invoiceRecords = db.invoiceRecords.map((item) =>
+      item.id === record.id ? record : item,
+    );
+  } else {
+    db.invoiceRecords = [...db.invoiceRecords, record];
+  }
   if (record.invoiceNumber >= db.settings.invoice.nextInvoiceNumber) {
     db.settings.invoice.nextInvoiceNumber = record.invoiceNumber + 1;
   }

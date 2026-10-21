@@ -125,7 +125,8 @@ export function PickupPage() {
     record.createdBy === user?.id;
   const canDelete = (record: PickupRecord) =>
     user?.role === "admin" || record.createdBy === user?.id;
-  const canManagePayments = user?.role === "admin";
+  const canManagePayments =
+    user?.role === "admin" || user?.role === "summarizer";
 
   return (
     <div>
@@ -138,7 +139,7 @@ export function PickupPage() {
                 {t("pickups.manageStores")}
               </GhostButton>
             ) : null}
-            {user?.role === "admin" ? (
+            {canManagePayments ? (
               <GhostButton onClick={() => setSettleOpen(true)}>
                 {t("pickups.batchSettle")}
               </GhostButton>

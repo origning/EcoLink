@@ -8,8 +8,10 @@ import {
   PageTitle,
   PrimaryButton,
   SearchInput,
+  Sheet,
   TextInput,
 } from "../components/ui";
+import { InvoiceReceiptSheet } from "../components/InvoiceReceiptSheet";
 import { useAuthStore } from "../store/useAuthStore";
 import { buildSummary, useAppStore } from "../store/useAppStore";
 import {
@@ -25,7 +27,13 @@ import {
   printInvoiceSnapshot,
 } from "../utils/exportInvoice";
 import { todayIso } from "../utils/format";
-import type { InvoiceRecord, SummaryMatrix } from "../types";
+import {
+  invoiceIsOverdue,
+  invoiceOutstanding,
+  invoicePaidAmount,
+  invoicePaymentStatus,
+} from "../utils/payments";
+import type { InvoiceRecord, InvoiceSnapshot, SummaryMatrix } from "../types";
 import {
   BuyerMultiSelect,
   initialInvoiceSnapshot,
@@ -53,6 +61,16 @@ function matrixForBuyer(matrix: SummaryMatrix, buyerId: string): SummaryMatrix {
   return { ...matrix, buyers: buyer ? [buyer] : [], sections };
 }
 
+function withTotals(snapshot: InvoiceSnapshot): InvoiceSnapshot {
+  const lines = snapshot.lines.map((line) => ({
+    ...line,
+    amount: line.quantity * line.price,
+  }));
+  const subtotal = lines.reduce((sum, line) => sum + line.amount, 0);
+  const tax = subtotal * (snapshot.taxRate / 100);
+  return { ...snapshot, lines, subtotal, tax, total: subtotal + tax };
+}
+
 export function InvoicesPage() {
   const { t } = useTranslation();
   const groups = useAppStore((s) => s.groups);
@@ -64,6 +82,8 @@ export function InvoicesPage() {
   const fontFamily = useAppStore((s) => s.settings.fontFamily);
   const flash = useAppStore((s) => s.flash);
   const saveInvoiceRecord = useAppStore((s) => s.saveInvoiceRecord);
+  const addInvoicePayment = useAppStore((s) => s.addInvoicePayment);
+  const voidInvoicePayment = useAppStore((s) => s.voidInvoicePayment);
   const user = useAuthStore((s) => s.user);
 
   const [mode, setMode] = useState<"single" | "range">("single");
@@ -72,8 +92,11 @@ export function InvoicesPage() {
   const [selectedBuyerIds, setSelectedBuyerIds] = useState<string[]>([]);
   const [keyword, setKeyword] = useState("");
   const [editItem, setEditItem] = useState<BatchExportItem | null>(null);
+  const [editRecord, setEditRecord] = useState<InvoiceRecord | null>(null);
+  const [receiptTarget, setReceiptTarget] = useState<InvoiceRecord | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [batchBusy, setBatchBusy] = useState<"zip" | "pdf" | null>(null);
+  const today = todayIso();
 
   const sortedBuyers = useMemo(
     () =>
@@ -447,6 +470,8 @@ export function InvoicesPage() {
                 const buyerName = buyer
                   ? buyer.code || buyer.name
                   : record.buyerName || record.snapshot.billTo.name;
+                const paymentStatus = invoicePaymentStatus(record);
+                const overdue = invoiceIsOverdue(record, today);
                 return (
                   <Card key={record.id}>
                     <div className="flex items-start justify-between gap-2">
@@ -458,12 +483,33 @@ export function InvoicesPage() {
                           {buyerName}
                         </p>
                       </div>
-                      <span className="shrink-0 text-sm font-semibold">
-                        {formatMoney(
-                          record.snapshot.currency,
-                          record.snapshot.total,
-                        )}
-                      </span>
+                      <div className="flex shrink-0 flex-col items-end gap-1">
+                        <span className="text-sm font-semibold">
+                          {formatMoney(
+                            record.snapshot.currency,
+                            record.snapshot.total,
+                          )}
+                        </span>
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                            overdue
+                              ? "bg-red-100 text-red-700"
+                              : paymentStatus === "paid"
+                                ? "bg-emerald-50 text-emerald-700"
+                                : paymentStatus === "partial"
+                                  ? "bg-amber-50 text-amber-700"
+                                  : "bg-red-50 text-red-600"
+                          }`}
+                        >
+                          {overdue
+                            ? t("pickups.statusOverdue")
+                            : paymentStatus === "paid"
+                              ? t("pickups.statusPaid")
+                              : paymentStatus === "partial"
+                                ? t("pickups.statusPartial")
+                                : t("pickups.statusUnpaid")}
+                        </span>
+                      </div>
                     </div>
                     <div className="mt-2 space-y-0.5 text-xs text-[var(--muted)]">
                       <p>
@@ -479,8 +525,26 @@ export function InvoicesPage() {
                         {" · "}
                         {t("invoice.createdBy")}: {record.createdByName}
                       </p>
+                      <p>
+                        {t("packing.received")}:{" "}
+                        {formatMoney(
+                          record.snapshot.currency,
+                          invoicePaidAmount(record),
+                        )}{" "}
+                        · {t("packing.unreceived")}:{" "}
+                        {formatMoney(
+                          record.snapshot.currency,
+                          invoiceOutstanding(record),
+                        )}
+                      </p>
                     </div>
                     <div className="mt-3 flex flex-wrap justify-end gap-1">
+                      <GhostButton onClick={() => setEditRecord(record)}>
+                        {t("common.edit")}
+                      </GhostButton>
+                      <GhostButton onClick={() => setReceiptTarget(record)}>
+                        {t("invoice.updatePayment")}
+                      </GhostButton>
                       <GhostButton
                         disabled={busy === `${record.id}:excel`}
                         onClick={() => void reexport(record, "excel")}
@@ -520,6 +584,298 @@ export function InvoicesPage() {
           }}
         />
       ) : null}
+
+      {editRecord ? (
+        <InvoiceRecordSheet
+          record={editRecord}
+          onClose={() => setEditRecord(null)}
+          onSave={async (next) => {
+            await saveInvoiceRecord(next);
+            flash({ type: "ok", message: t("invoice.recordSaved") });
+            setEditRecord(null);
+          }}
+        />
+      ) : null}
+
+      {receiptTarget ? (
+        <InvoiceReceiptSheet
+          invoice={receiptTarget}
+          onClose={() => setReceiptTarget(null)}
+          onAdd={async (input) => {
+            await addInvoicePayment(receiptTarget.id, input);
+            flash({ type: "ok", message: t("packing.receiptSaved") });
+            setReceiptTarget(null);
+          }}
+          onVoid={async (paymentId) => {
+            await voidInvoicePayment(receiptTarget.id, paymentId);
+            flash({ type: "ok", message: t("pickups.paymentVoided") });
+            setReceiptTarget(null);
+          }}
+        />
+      ) : null}
     </div>
+  );
+}
+
+function InvoiceRecordSheet({
+  record,
+  onClose,
+  onSave,
+}: {
+  record: InvoiceRecord;
+  onClose: () => void;
+  onSave: (record: InvoiceRecord) => Promise<void>;
+}) {
+  const { t } = useTranslation();
+  const [invoiceNo, setInvoiceNo] = useState(record.invoiceNo);
+  const [snapshot, setSnapshot] = useState<InvoiceSnapshot>(record.snapshot);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const paid = invoicePaidAmount(record);
+
+  const update = (patch: Partial<InvoiceSnapshot>) =>
+    setSnapshot((prev) => withTotals({ ...prev, ...patch }));
+
+  const updateLine = (
+    index: number,
+    field: "description" | "quantity" | "price",
+    value: string,
+  ) => {
+    setSnapshot((prev) => {
+      const lines = prev.lines.map((line, lineIndex) => {
+        if (lineIndex !== index) return line;
+        if (field === "description") return { ...line, description: value };
+        return { ...line, [field]: Number(value) || 0 };
+      });
+      return withTotals({ ...prev, lines });
+    });
+  };
+
+  const save = async () => {
+    if (!invoiceNo.trim()) {
+      setError(t("invoice.needNumber"));
+      return;
+    }
+    if (snapshot.total + 0.0001 < paid) {
+      setError(t("invoice.totalBelowPaid"));
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const number =
+        Number((invoiceNo.match(/(\d+)$/) ?? [])[1]) || record.invoiceNumber;
+      await onSave({
+        ...record,
+        invoiceNo: invoiceNo.trim(),
+        invoiceNumber: number,
+        snapshot,
+      });
+    } catch (saveError) {
+      const message =
+        saveError instanceof Error ? saveError.message : String(saveError);
+      setError(
+        message === "invoice-number-taken"
+          ? t("invoice.numberTaken")
+          : message === "invoice-total-below-paid"
+            ? t("invoice.totalBelowPaid")
+            : message,
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Sheet title={t("invoice.editRecordTitle")} onClose={onClose}>
+      <div className="space-y-4">
+        <p className="rounded-2xl bg-[var(--bg)] px-3 py-2 text-xs text-[var(--muted)]">
+          {t("invoice.editRecordHint")}
+        </p>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <Field label={t("invoice.number")}>
+            <TextInput
+              value={invoiceNo}
+              onChange={(event) => setInvoiceNo(event.target.value)}
+            />
+          </Field>
+          <Field label={t("invoice.issueDate")}>
+            <TextInput
+              type="date"
+              value={snapshot.issuedAt}
+              onChange={(event) => update({ issuedAt: event.target.value })}
+            />
+          </Field>
+          <Field label={t("invoice.dueDate")}>
+            <TextInput
+              type="date"
+              value={snapshot.dueAt}
+              onChange={(event) => update({ dueAt: event.target.value })}
+            />
+          </Field>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Field label={t("invoice.currency")}>
+            <TextInput
+              value={snapshot.currency}
+              onChange={(event) => update({ currency: event.target.value })}
+            />
+          </Field>
+          <Field label={t("invoice.taxRate")}>
+            <TextInput
+              type="number"
+              min="0"
+              max="100"
+              step="0.01"
+              value={snapshot.taxRate}
+              onChange={(event) =>
+                update({ taxRate: Number(event.target.value) || 0 })
+              }
+            />
+          </Field>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <Field label={t("common.name")}>
+            <TextInput
+              value={snapshot.billTo.name}
+              onChange={(event) =>
+                update({
+                  billTo: { ...snapshot.billTo, name: event.target.value },
+                })
+              }
+            />
+          </Field>
+          <Field label={t("buyers.address")}>
+            <TextInput
+              value={snapshot.billTo.address}
+              onChange={(event) =>
+                update({
+                  billTo: { ...snapshot.billTo, address: event.target.value },
+                })
+              }
+            />
+          </Field>
+          <Field label={t("buyers.phone")}>
+            <TextInput
+              value={snapshot.billTo.phone}
+              onChange={(event) =>
+                update({
+                  billTo: { ...snapshot.billTo, phone: event.target.value },
+                })
+              }
+            />
+          </Field>
+        </div>
+
+        <div>
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-sm font-medium">{t("invoice.lines")}</p>
+            <GhostButton
+              onClick={() =>
+                update({
+                  lines: [
+                    ...snapshot.lines,
+                    { description: "", quantity: 1, price: 0, amount: 0 },
+                  ],
+                })
+              }
+            >
+              {t("invoice.addLine")}
+            </GhostButton>
+          </div>
+          <div className="space-y-2">
+            {snapshot.lines.map((line, index) => (
+              <div
+                key={index}
+                className="grid grid-cols-1 gap-2 rounded-2xl bg-[var(--bg)] p-3 sm:grid-cols-[1fr_5rem_6rem_5rem_auto]"
+              >
+                <TextInput
+                  placeholder={t("invoice.description")}
+                  value={line.description}
+                  onChange={(event) =>
+                    updateLine(index, "description", event.target.value)
+                  }
+                />
+                <TextInput
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder={t("orders.quantity")}
+                  value={line.quantity}
+                  onChange={(event) =>
+                    updateLine(index, "quantity", event.target.value)
+                  }
+                />
+                <TextInput
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder={t("summary.unitPrice")}
+                  value={line.price}
+                  onChange={(event) =>
+                    updateLine(index, "price", event.target.value)
+                  }
+                />
+                <div className="flex items-center justify-end text-sm font-medium">
+                  {line.amount.toFixed(2)}
+                </div>
+                <GhostButton
+                  danger
+                  onClick={() =>
+                    update({
+                      lines: snapshot.lines.filter(
+                        (_, lineIndex) => lineIndex !== index,
+                      ),
+                    })
+                  }
+                >
+                  {t("common.delete")}
+                </GhostButton>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-2xl bg-[var(--bg)] p-3 text-sm">
+          <div className="flex justify-between">
+            <span>{t("invoice.subtotal")}</span>
+            <span>{snapshot.subtotal.toFixed(2)}</span>
+          </div>
+          <div className="mt-1 flex justify-between">
+            <span>
+              {t("invoice.tax")} ({snapshot.taxRate}%)
+            </span>
+            <span>{snapshot.tax.toFixed(2)}</span>
+          </div>
+          <div className="mt-1 flex justify-between font-semibold">
+            <span>{t("common.total")}</span>
+            <span>
+              {snapshot.currency}
+              {snapshot.total.toFixed(2)}
+            </span>
+          </div>
+          <div className="mt-1 flex justify-between text-xs text-[var(--muted)]">
+            <span>{t("packing.received")}</span>
+            <span>{paid.toFixed(2)}</span>
+          </div>
+        </div>
+
+        {error ? (
+          <p className="rounded-2xl bg-red-50 px-3 py-2 text-sm text-red-600">
+            {error}
+          </p>
+        ) : null}
+
+        <div className="flex justify-end gap-2">
+          <GhostButton onClick={onClose}>{t("common.cancel")}</GhostButton>
+          <PrimaryButton disabled={busy} onClick={() => void save()}>
+            {busy ? t("common.saving") : t("invoice.saveRecord")}
+          </PrimaryButton>
+        </div>
+      </div>
+    </Sheet>
   );
 }

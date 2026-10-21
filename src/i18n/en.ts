@@ -600,6 +600,14 @@ export const en = {
     tax: "Tax",
     needNumber: "Enter an invoice number",
     numberTaken: "This invoice number is already used. Choose another one.",
+    editRecordTitle: "Edit invoice",
+    editRecordHint:
+      "You can change the amount, tax, dates, invoice number, and line items. Income and invoice history update after saving.",
+    saveRecord: "Save invoice",
+    recordSaved: "Invoice updated",
+    updatePayment: "Receipt / payment status",
+    totalBelowPaid:
+      "The invoice total cannot be lower than the amount already received. Void extra receipts first.",
   },
   data: {
     title: "Backup",

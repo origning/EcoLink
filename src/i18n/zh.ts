@@ -581,6 +581,13 @@ export const zh = {
     tax: "税",
     needNumber: "请填写发票号",
     numberTaken: "这个发票号已经用过了，请换一个",
+    editRecordTitle: "编辑发票",
+    editRecordHint:
+      "可以修改发票金额、税额、日期、发票号和明细。保存后，收入和历史发票会同步更新。",
+    saveRecord: "保存发票",
+    recordSaved: "发票已更新",
+    updatePayment: "收款 / 修改付款状态",
+    totalBelowPaid: "发票金额不能低于已收款金额，请先作废多余收款。",
   },
   data: {
     title: "数据备份",

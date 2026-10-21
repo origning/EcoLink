@@ -550,11 +550,14 @@ export function createFileStore(
   function canWriteImage(user: AuthUser | null, id: string) {
     if (!auth || !user) return true;
     if (user.role === "admin") return true;
-    if (
-      user.role === "uploader" ||
-      user.role === "picker" ||
-      user.role === "summarizer"
-    ) {
+    if (user.role === "summarizer") {
+      return (
+        id.startsWith("pickup-") ||
+        id.startsWith("pack-") ||
+        id.startsWith("invoice-")
+      );
+    }
+    if (user.role === "uploader" || user.role === "picker") {
       return id.startsWith("pickup-") || id.startsWith("pack-");
     }
     if (user.role === "packer") return id.startsWith("pack-");
@@ -895,7 +898,7 @@ export function createFileStore(
       /^\/api\/invoices\/([^/]+)\/payments(?:\/([^/]+)\/void)?$/,
     );
     if (paymentMatch) {
-      if (!isAdmin(user)) {
+      if (!roleAllowed(user, ["admin", "summarizer"])) {
         sendForbidden(res);
         return true;
       }
@@ -986,30 +989,51 @@ export function createFileStore(
       return true;
     }
     const db = readDb();
-    if (db.invoiceRecords.some((record) => record.invoiceNo === invoiceNo)) {
-      sendJson(res, 400, { error: "invoice-number-taken" });
-      return true;
-    }
     const id = text(body.id) || `invoice-${crypto.randomUUID()}`;
-    if (db.invoiceRecords.some((record) => record.id === id)) {
-      sendJson(res, 400, { error: "invoice-exists" });
+    const existingIndex = db.invoiceRecords.findIndex(
+      (record) => record.id === id,
+    );
+    const existing = existingIndex >= 0 ? db.invoiceRecords[existingIndex] : null;
+    if (
+      db.invoiceRecords.some(
+        (record) => record.id !== id && record.invoiceNo === invoiceNo,
+      )
+    ) {
+      sendJson(res, 400, { error: "invoice-number-taken" });
       return true;
     }
     const numberFromBody = numberValue(body.invoiceNumber);
     const numberFromText = numberValue(
       Number((invoiceNo.match(/(\d+)$/) ?? [])[1]),
     );
-    const invoiceNumber = numberFromBody || numberFromText;
+    const invoiceNumber =
+      numberFromBody || numberFromText || existing?.invoiceNumber || 0;
     const next = normalizeInvoiceRecord({
+      ...existing,
       ...body,
       id,
       invoiceNo,
       invoiceNumber,
-      createdBy: user?.id ?? "local",
-      createdByName: user?.username ?? "local",
-      createdAt: Date.now(),
+      payments: Array.isArray(body.payments)
+        ? body.payments
+        : (existing?.payments ?? []),
+      createdBy: existing?.createdBy ?? user?.id ?? "local",
+      createdByName: existing?.createdByName ?? user?.username ?? "local",
+      createdAt: existing?.createdAt ?? Date.now(),
     });
-    db.invoiceRecords.push(next);
+    const paid = next.payments.reduce(
+      (sum, payment) => (payment.voidedAt ? sum : sum + payment.amount),
+      0,
+    );
+    if (next.snapshot.total + 0.0001 < paid) {
+      sendJson(res, 400, { error: "invoice-total-below-paid" });
+      return true;
+    }
+    if (existingIndex >= 0) {
+      db.invoiceRecords[existingIndex] = next;
+    } else {
+      db.invoiceRecords.push(next);
+    }
     if (invoiceNumber >= db.settings.invoice.nextInvoiceNumber) {
       db.settings.invoice.nextInvoiceNumber = invoiceNumber + 1;
     }
