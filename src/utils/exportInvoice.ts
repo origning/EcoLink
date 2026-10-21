@@ -70,6 +70,25 @@ export type InvoiceData = {
   invoiceNo: string;
 };
 
+function displayLines(
+  lines: InvoiceLine[],
+  subtotal: number,
+  ingredientCategories: string[],
+): InvoiceLine[] {
+  const lineTotal = lines.reduce((sum, line) => sum + line.amount, 0);
+  if (lines.length > 0 && Math.abs(lineTotal - subtotal) < 0.01) {
+    return lines;
+  }
+  return [
+    {
+      description: ingredientCategories.join(", ") || "Ingredients",
+      quantity: 1,
+      price: subtotal,
+      amount: subtotal,
+    },
+  ];
+}
+
 function categoryLabel(group: Group | undefined, parent?: Group) {
   const labelFor = (item: Group | undefined) => {
     if (!item || item.id === "__deleted") return i18n.t("common.deletedItem");
@@ -143,7 +162,7 @@ export function addInvoiceSheet(
 ) {
   const data = override ?? buildInvoiceData(matrix, settings, invoiceNumber);
   const {
-    lines,
+    lines: sourceLines,
     ingredientCategories,
     subtotal,
     tax,
@@ -152,6 +171,7 @@ export function addInvoiceSheet(
     dueDate,
     invoiceNo,
   } = data;
+  const lines = displayLines(sourceLines, subtotal, ingredientCategories);
 
   workbook.creator = settings.companyName || "EcoLink";
   const sheet = workbook.addWorksheet("Invoice", {
@@ -479,7 +499,7 @@ export function buildInvoiceHtml(
 ) {
   const data = override ?? buildInvoiceData(matrix, settings, invoiceNumber);
   const {
-    lines,
+    lines: sourceLines,
     ingredientCategories,
     subtotal,
     tax,
@@ -488,6 +508,7 @@ export function buildInvoiceHtml(
     dueDate,
     invoiceNo,
   } = data;
+  const lines = displayLines(sourceLines, subtotal, ingredientCategories);
 
   const billHtml = `
     <div>${escapeHtml(buyer.name)}</div>

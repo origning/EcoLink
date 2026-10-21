@@ -586,13 +586,14 @@ export const zh = {
     numberTaken: "这个发票号已经用过了，请换一个",
     editRecordTitle: "编辑发票",
     editRecordHint:
-      "可以修改发票金额、税额、日期、发票号和明细。保存后，收入和历史发票会同步更新。",
+      "可以修改发票金额、GST、日期、发票号和食材类别，不需要填写产品明细。保存后，收入和历史发票会同步更新。",
     saveRecord: "保存发票",
     recordSaved: "发票已更新",
     updatePayment: "收款 / 修改付款状态",
     totalBelowPaid: "发票金额不能低于已收款金额，请先作废多余收款。",
+    amountExGst: "发票金额（未含 GST）",
     requiredFields:
-      "请填写发票号、开票日、币种、客户名称，并至少保留一条有名称和数量的发票明细。",
+      "请填写发票号、开票日、币种、客户名称和发票金额。",
   },
   data: {
     title: "数据备份",

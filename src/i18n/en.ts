@@ -593,7 +593,7 @@ export const en = {
     popupBlocked: "The browser blocked the download window. Allow it and try again.",
     editTitle: "Confirm / edit this invoice",
     editHint:
-      "Changes here only affect this exported invoice. Orders, items, customers, and global invoice settings are not changed.",
+      "Changes here only affect this exported invoice. Orders, items, customers, and global invoice settings are not changed. You can skip line details and enter the invoice amount directly.",
     number: "Invoice number",
     issueDate: "Issue date",
     dueDate: "Due date",
@@ -606,14 +606,15 @@ export const en = {
     numberTaken: "This invoice number is already used. Choose another one.",
     editRecordTitle: "Edit invoice",
     editRecordHint:
-      "You can change the amount, tax, dates, invoice number, and line items. Income and invoice history update after saving.",
+      "You can change the amount, GST, dates, invoice number, and ingredient categories. Product line details are not required. Income and invoice history update after saving.",
     saveRecord: "Save invoice",
     recordSaved: "Invoice updated",
     updatePayment: "Receipt / payment status",
     totalBelowPaid:
       "The invoice total cannot be lower than the amount already received. Void extra receipts first.",
+    amountExGst: "Invoice amount (excl. GST)",
     requiredFields:
-      "Enter the invoice number, issue date, currency, customer name, and keep at least one invoice line with a description and quantity.",
+      "Enter the invoice number, issue date, currency, customer name, and invoice amount.",
   },
   data: {
     title: "Backup",

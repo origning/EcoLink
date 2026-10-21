@@ -530,13 +530,10 @@ function addDaysIso(iso: string, days: number) {
 }
 
 function withTotals(snapshot: InvoiceSnapshot): InvoiceSnapshot {
-  const lines = snapshot.lines.map((line) => ({
-    ...line,
-    amount: line.quantity * line.price,
-  }));
-  const subtotal = lines.reduce((sum, line) => sum + line.amount, 0);
-  const tax = snapshot.tax;
-  return { ...snapshot, lines, subtotal, tax, total: subtotal + tax };
+  return {
+    ...snapshot,
+    total: snapshot.subtotal + snapshot.tax,
+  };
 }
 
 export function initialInvoiceSnapshot(
@@ -615,40 +612,6 @@ export function InvoiceEditSheet({
       }),
     );
 
-  const updateLine = (
-    index: number,
-    field: "description" | "quantity" | "price",
-    value: string,
-  ) => {
-    setSnapshot((prev) => {
-      const lines = prev.lines.map((line, lineIndex) => {
-        if (lineIndex !== index) return line;
-        if (field === "description") return { ...line, description: value };
-        return { ...line, [field]: Number(value) || 0 };
-      });
-      return withTotals({ ...prev, lines });
-    });
-  };
-
-  const addLine = () =>
-    setSnapshot((prev) =>
-      withTotals({
-        ...prev,
-        lines: [
-          ...prev.lines,
-          { description: "", quantity: 1, price: 0, amount: 0 },
-        ],
-      }),
-    );
-
-  const removeLine = (index: number) =>
-    setSnapshot((prev) =>
-      withTotals({
-        ...prev,
-        lines: prev.lines.filter((_, lineIndex) => lineIndex !== index),
-      }),
-    );
-
   const exportNow = async (format: "excel" | "pdf") => {
     if (!invoiceNo.trim()) {
       setError(t("invoice.needNumber"));
@@ -658,9 +621,7 @@ export function InvoiceEditSheet({
       !snapshot.issuedAt ||
       !snapshot.currency.trim() ||
       !snapshot.billTo.name.trim() ||
-      !snapshot.lines.some(
-        (line) => line.description.trim() && line.quantity > 0,
-      )
+      snapshot.subtotal <= 0
     ) {
       setError(t("invoice.requiredFields"));
       return;
@@ -848,58 +809,6 @@ export function InvoiceEditSheet({
           </div>
         </div>
 
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold">
-              {t("invoice.lines")}{" "}
-              <span className="text-xs text-[var(--muted)]">
-                {t("common.required")}
-              </span>
-            </p>
-            <GhostButton onClick={addLine}>{t("invoice.addLine")}</GhostButton>
-          </div>
-          {snapshot.lines.map((line, index) => (
-            <div
-              key={index}
-              className="grid grid-cols-1 gap-2 rounded-2xl bg-[var(--bg)] p-3 sm:grid-cols-[1fr_5rem_6rem_6rem_auto]"
-            >
-              <TextInput
-                value={line.description}
-                placeholder={t("invoice.description")}
-                onChange={(event) =>
-                  updateLine(index, "description", event.target.value)
-                }
-              />
-              <TextInput
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder={t("orders.quantity")}
-                value={line.quantity}
-                onChange={(event) =>
-                  updateLine(index, "quantity", event.target.value)
-                }
-              />
-              <TextInput
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder={t("summary.unitPrice")}
-                value={line.price}
-                onChange={(event) =>
-                  updateLine(index, "price", event.target.value)
-                }
-              />
-              <div className="flex items-center justify-end text-sm font-medium">
-                {line.amount.toFixed(2)}
-              </div>
-              <GhostButton danger onClick={() => removeLine(index)}>
-                ×
-              </GhostButton>
-            </div>
-          ))}
-        </div>
-
         <Field
           label={t("invoice.ingredientCategories")}
           hint={t("invoice.ingredientCategoriesHint")}
@@ -917,7 +826,18 @@ export function InvoiceEditSheet({
           />
         </Field>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <Field label={t("invoice.amountExGst")} hint={t("common.required")}>
+            <TextInput
+              type="number"
+              min="0"
+              step="0.01"
+              value={snapshot.subtotal}
+              onChange={(event) =>
+                update({ subtotal: Number(event.target.value) || 0 })
+              }
+            />
+          </Field>
           <Field label={t("invoice.taxAmount")} hint={t("common.optional")}>
             <TextInput
               type="number"

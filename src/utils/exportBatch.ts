@@ -137,7 +137,24 @@ function quantity(value: number) {
 
 function invoicePage(item: BatchExportItem, labels: BatchPrintLabels) {
   const snapshot = item.snapshot;
-  const lines = snapshot.lines
+  const lineTotal = snapshot.lines.reduce(
+    (sum, line) => sum + line.amount,
+    0,
+  );
+  const displayLines =
+    snapshot.lines.length > 0 &&
+    Math.abs(lineTotal - snapshot.subtotal) < 0.01
+      ? snapshot.lines
+      : [
+          {
+            description:
+              snapshot.ingredientCategories.join(", ") || "Ingredients",
+            quantity: 1,
+            price: snapshot.subtotal,
+            amount: snapshot.subtotal,
+          },
+        ];
+  const lines = displayLines
     .map(
       (line) => `<tr>
         <td>${escapeHtml(line.description)}</td>

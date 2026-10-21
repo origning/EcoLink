@@ -62,13 +62,10 @@ function matrixForBuyer(matrix: SummaryMatrix, buyerId: string): SummaryMatrix {
 }
 
 function withTotals(snapshot: InvoiceSnapshot): InvoiceSnapshot {
-  const lines = snapshot.lines.map((line) => ({
-    ...line,
-    amount: line.quantity * line.price,
-  }));
-  const subtotal = lines.reduce((sum, line) => sum + line.amount, 0);
-  const tax = snapshot.tax;
-  return { ...snapshot, lines, subtotal, tax, total: subtotal + tax };
+  return {
+    ...snapshot,
+    total: snapshot.subtotal + snapshot.tax,
+  };
 }
 
 export function InvoicesPage() {
@@ -642,21 +639,6 @@ function InvoiceRecordSheet({
   const update = (patch: Partial<InvoiceSnapshot>) =>
     setSnapshot((prev) => withTotals({ ...prev, ...patch }));
 
-  const updateLine = (
-    index: number,
-    field: "description" | "quantity" | "price",
-    value: string,
-  ) => {
-    setSnapshot((prev) => {
-      const lines = prev.lines.map((line, lineIndex) => {
-        if (lineIndex !== index) return line;
-        if (field === "description") return { ...line, description: value };
-        return { ...line, [field]: Number(value) || 0 };
-      });
-      return withTotals({ ...prev, lines });
-    });
-  };
-
   const save = async () => {
     if (!invoiceNo.trim()) {
       setError(t("invoice.needNumber"));
@@ -666,9 +648,7 @@ function InvoiceRecordSheet({
       !snapshot.issuedAt ||
       !snapshot.currency.trim() ||
       !snapshot.billTo.name.trim() ||
-      !snapshot.lines.some(
-        (line) => line.description.trim() && line.quantity > 0,
-      )
+      snapshot.subtotal <= 0
     ) {
       setError(t("invoice.requiredFields"));
       return;
@@ -750,11 +730,16 @@ function InvoiceRecordSheet({
           />
         </Field>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Field label={t("invoice.currency")} hint={t("common.required")}>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <Field label={t("invoice.amountExGst")} hint={t("common.required")}>
             <TextInput
-              value={snapshot.currency}
-              onChange={(event) => update({ currency: event.target.value })}
+              type="number"
+              min="0"
+              step="0.01"
+              value={snapshot.subtotal}
+              onChange={(event) =>
+                update({ subtotal: Number(event.target.value) || 0 })
+              }
             />
           </Field>
           <Field label={t("invoice.taxAmount")} hint={t("common.optional")}>
@@ -766,6 +751,12 @@ function InvoiceRecordSheet({
               onChange={(event) =>
                 update({ tax: Number(event.target.value) || 0 })
               }
+            />
+          </Field>
+          <Field label={t("invoice.currency")} hint={t("common.required")}>
+            <TextInput
+              value={snapshot.currency}
+              onChange={(event) => update({ currency: event.target.value })}
             />
           </Field>
         </div>
@@ -801,80 +792,6 @@ function InvoiceRecordSheet({
               }
             />
           </Field>
-        </div>
-
-        <div>
-          <div className="mb-2 flex items-center justify-between">
-            <p className="text-sm font-medium">
-              {t("invoice.lines")}{" "}
-              <span className="text-xs text-[var(--muted)]">
-                {t("common.required")}
-              </span>
-            </p>
-            <GhostButton
-              onClick={() =>
-                update({
-                  lines: [
-                    ...snapshot.lines,
-                    { description: "", quantity: 1, price: 0, amount: 0 },
-                  ],
-                })
-              }
-            >
-              {t("invoice.addLine")}
-            </GhostButton>
-          </div>
-          <div className="space-y-2">
-            {snapshot.lines.map((line, index) => (
-              <div
-                key={index}
-                className="grid grid-cols-1 gap-2 rounded-2xl bg-[var(--bg)] p-3 sm:grid-cols-[1fr_5rem_6rem_5rem_auto]"
-              >
-                <TextInput
-                  placeholder={t("invoice.description")}
-                  value={line.description}
-                  onChange={(event) =>
-                    updateLine(index, "description", event.target.value)
-                  }
-                />
-                <TextInput
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder={t("orders.quantity")}
-                  value={line.quantity}
-                  onChange={(event) =>
-                    updateLine(index, "quantity", event.target.value)
-                  }
-                />
-                <TextInput
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder={t("summary.unitPrice")}
-                  value={line.price}
-                  onChange={(event) =>
-                    updateLine(index, "price", event.target.value)
-                  }
-                />
-                <div className="flex items-center justify-end text-sm font-medium">
-                  {line.amount.toFixed(2)}
-                </div>
-                <GhostButton
-                  danger
-                  onClick={() =>
-                    update({
-                      lines: snapshot.lines.filter(
-                        (_, lineIndex) => lineIndex !== index,
-                      ),
-                    })
-                  }
-                >
-                  {t("common.delete")}
-                </GhostButton>
-              </div>
-            ))}
-          </div>
         </div>
 
         <div className="rounded-2xl bg-[var(--bg)] p-3 text-sm">

@@ -986,7 +986,7 @@ export function createFileStore(
     const invoiceNo = text(body.invoiceNo);
     const snapshot = body.snapshot as
       | {
-          lines?: unknown;
+          subtotal?: unknown;
           issuedAt?: unknown;
           currency?: unknown;
           billTo?: { name?: unknown };
@@ -996,8 +996,8 @@ export function createFileStore(
       !invoiceNo ||
       !text(body.buyerId) ||
       !snapshot ||
-      !Array.isArray(snapshot.lines) ||
-      snapshot.lines.length === 0 ||
+      !Number.isFinite(Number(snapshot.subtotal)) ||
+      Number(snapshot.subtotal) < 0 ||
       !text(snapshot.issuedAt) ||
       !text(snapshot.currency) ||
       !text(snapshot.billTo?.name)
