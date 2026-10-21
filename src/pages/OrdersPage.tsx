@@ -170,6 +170,7 @@ export function OrdersPage() {
       : null,
   );
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [dateViewOpen, setDateViewOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const previousBuyerRef = useRef(
@@ -366,6 +367,7 @@ export function OrdersPage() {
     );
     setEditingOrder(order);
     setHistoryOpen(false);
+    setDateViewOpen(false);
     window.scrollTo({ top: 0, behavior: "smooth" });
     flash({ type: "ok", message: t("orders.historyLoaded") });
   };
@@ -596,7 +598,11 @@ export function OrdersPage() {
       <PageTitle
         title={t("orders.title")}
         action={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <GhostButton onClick={() => setDateViewOpen(true)}>
+              <CalendarIcon />
+              {t("orders.viewByDate")}
+            </GhostButton>
             <GhostButton onClick={() => setHistoryOpen(true)}>
               <HistoryIcon />
               {t("orders.history")}
@@ -1071,6 +1077,18 @@ export function OrdersPage() {
         />
       )}
 
+      {dateViewOpen && (
+        <OrdersByDateSheet
+          initialDate={date}
+          orders={orders}
+          buyers={buyers}
+          ingredients={ingredients}
+          onLoad={loadOrderForEdit}
+          onDelete={removeOrder}
+          onClose={() => setDateViewOpen(false)}
+        />
+      )}
+
       {historyOpen && (
         <OrderHistorySheet
           orders={orders}
@@ -1247,6 +1265,187 @@ function OrderSummary({
         {t("orders.summaryEditHint")}
       </p>
     </div>
+  );
+}
+
+function OrdersByDateSheet({
+  initialDate,
+  orders,
+  buyers,
+  ingredients,
+  onLoad,
+  onDelete,
+  onClose,
+}: {
+  initialDate: string;
+  orders: Order[];
+  buyers: Buyer[];
+  ingredients: Ingredient[];
+  onLoad: (order: Order) => void;
+  onDelete: (order: Order) => void;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const [selectedDate, setSelectedDate] = useState(initialDate || todayIso());
+  const [detailOrder, setDetailOrder] = useState<Order | null>(null);
+
+  const buyerMap = useMemo(
+    () => new Map(buyers.map((buyer) => [buyer.id, buyer])),
+    [buyers],
+  );
+  const ingredientMap = useMemo(
+    () => new Map(ingredients.map((item) => [item.id, item])),
+    [ingredients],
+  );
+
+  const dayOrders = useMemo(
+    () =>
+      orders
+        .filter((order) => order.date === selectedDate)
+        .sort((a, b) => {
+          const buyerA = buyerMap.get(a.buyerId);
+          const buyerB = buyerMap.get(b.buyerId);
+          return (
+            (buyerA?.sort ?? 10_000) - (buyerB?.sort ?? 10_000) ||
+            (buyerA?.name ?? "").localeCompare(buyerB?.name ?? "", "zh") ||
+            b.updatedAt - a.updatedAt
+          );
+        }),
+    [orders, selectedDate, buyerMap],
+  );
+
+  const buyerName = (buyerId: string) => {
+    const buyer = buyerMap.get(buyerId);
+    return buyer ? buyer.code || buyer.name : t("orders.historyDeletedBuyer");
+  };
+
+  const itemRows = (order: Order) =>
+    order.items.flatMap((item) => {
+      const ingredient = ingredientMap.get(item.ingredientId);
+      const name = ingredient
+        ? ingredient.nameEn || ingredient.name || ingredient.code
+        : t("common.deletedItem");
+      return [{ id: item.ingredientId, name, quantity: item.quantity }];
+    });
+
+  return (
+    <Sheet
+      title={detailOrder ? t("orders.orderDetail") : t("orders.viewByDate")}
+      onClose={onClose}
+    >
+      {detailOrder ? (
+        <div className="space-y-4">
+          <div className="rounded-2xl bg-[var(--bg)] p-3">
+            <p className="font-semibold">
+              {detailOrder.date} · {buyerName(detailOrder.buyerId)}
+            </p>
+            <p className="mt-1 text-xs text-[var(--muted)]">
+              {t("orders.historyItemCount", {
+                count: detailOrder.items.length,
+              })}
+              {" · "}
+              {t("orders.historyTotalQty", {
+                qty: detailOrder.items.reduce(
+                  (sum, item) => sum + item.quantity,
+                  0,
+                ),
+              })}
+            </p>
+          </div>
+          <ul className="divide-y divide-[var(--line)] rounded-2xl border border-[var(--line)]">
+            {itemRows(detailOrder).map((item) => (
+              <li
+                key={item.id}
+                className="flex items-center justify-between gap-3 px-3 py-2 text-sm"
+              >
+                <span className="min-w-0 truncate">{item.name}</span>
+                <span className="shrink-0 font-semibold">{item.quantity}</span>
+              </li>
+            ))}
+          </ul>
+          <div className="flex flex-wrap justify-end gap-2">
+            <GhostButton onClick={() => setDetailOrder(null)}>
+              {t("orders.backToList")}
+            </GhostButton>
+            <GhostButton danger onClick={() => onDelete(detailOrder)}>
+              {t("common.delete")}
+            </GhostButton>
+            <PrimaryButton onClick={() => onLoad(detailOrder)}>
+              {t("orders.historyEdit")}
+            </PrimaryButton>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <p className="text-xs text-[var(--muted)]">
+            {t("orders.viewByDateHint")}
+          </p>
+          <Field label={t("orders.date")}>
+            <TextInput
+              type="date"
+              value={selectedDate}
+              onChange={(event) => setSelectedDate(event.target.value)}
+            />
+          </Field>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-semibold text-[var(--muted)]">
+              {t("orders.dateOrdersCount", {
+                date: selectedDate,
+                count: dayOrders.length,
+              })}
+            </span>
+          </div>
+          {dayOrders.length === 0 ? (
+            <p className="py-8 text-center text-sm text-[var(--muted)]">
+              {t("orders.noOrdersOnDate")}
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {dayOrders.map((order) => {
+                const rows = itemRows(order);
+                const totalQty = order.items.reduce(
+                  (sum, item) => sum + item.quantity,
+                  0,
+                );
+                return (
+                  <li
+                    key={order.id}
+                    className="rounded-2xl bg-[var(--bg)] px-3 py-3"
+                  >
+                    <p className="truncate font-semibold">
+                      {buyerName(order.buyerId)}
+                    </p>
+                    <p className="mt-0.5 text-xs text-[var(--muted)]">
+                      {t("orders.historyItemCount", { count: rows.length })}
+                      {" · "}
+                      {t("orders.historyTotalQty", { qty: totalQty })}
+                    </p>
+                    <p className="mt-1 line-clamp-2 text-xs text-[var(--ink)]">
+                      {rows.length > 0
+                        ? rows
+                            .map((item) => `${item.name} × ${item.quantity}`)
+                            .join("，")
+                        : t("orders.emptyOrder")}
+                    </p>
+                    <div className="mt-2 flex flex-wrap justify-end gap-1">
+                      <GhostButton onClick={() => setDetailOrder(order)}>
+                        {t("orders.viewDetail")}
+                      </GhostButton>
+                      <GhostButton onClick={() => onLoad(order)}>
+                        {t("orders.historyEdit")}
+                      </GhostButton>
+                      <GhostButton danger onClick={() => onDelete(order)}>
+                        {t("common.delete")}
+                      </GhostButton>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      )}
+    </Sheet>
   );
 }
 
@@ -1622,6 +1821,35 @@ function IngredientList({
         );
       })}
     </ul>
+  );
+}
+
+function CalendarIcon() {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden
+      className="shrink-0"
+    >
+      <rect
+        x="3.5"
+        y="5.5"
+        width="17"
+        height="15"
+        rx="2"
+        stroke="currentColor"
+        strokeWidth="1.6"
+      />
+      <path
+        d="M8 3.5v4M16 3.5v4M3.5 10h17"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </svg>
   );
 }
 
