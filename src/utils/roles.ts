@@ -3,8 +3,7 @@ import type { UserRole } from "../types";
 export const ROLE_OPTIONS: UserRole[] = [
   "admin",
   "editor",
-  "picker",
-  "packer",
+  "uploader",
   "summarizer",
 ];
 
@@ -14,10 +13,10 @@ export function roleLabelKey(role: UserRole) {
       return "auth.roleAdmin";
     case "editor":
       return "auth.roleEditor";
+    case "uploader":
     case "picker":
-      return "auth.rolePicker";
     case "packer":
-      return "auth.rolePacker";
+      return "auth.roleUploader";
     case "summarizer":
       return "auth.roleSummarizer";
   }
@@ -29,10 +28,10 @@ export function homeForRole(role: UserRole) {
       return "/ingredients";
     case "editor":
       return "/orders";
+    case "uploader":
     case "picker":
-      return "/pickups";
     case "packer":
-      return "/packing";
+      return "/upload";
     case "summarizer":
       return "/summary";
   }

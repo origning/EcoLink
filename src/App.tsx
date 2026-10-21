@@ -14,6 +14,7 @@ import { OrdersPage } from "./pages/OrdersPage";
 import { PackingPage } from "./pages/PackingPage";
 import { PickupPage } from "./pages/PickupPage";
 import { SummaryPage } from "./pages/SummaryPage";
+import { UploadPage } from "./pages/UploadPage";
 import { useAppStore } from "./store/useAppStore";
 import { useAuthStore } from "./store/useAuthStore";
 import { homeForRole } from "./utils/roles";
@@ -86,9 +87,17 @@ export default function App() {
             }
           />
           <Route
+            path="/upload"
+            element={
+              <RequireRole roles={["admin", "uploader", "picker", "packer"]}>
+                <UploadPage />
+              </RequireRole>
+            }
+          />
+          <Route
             path="/pickups"
             element={
-              <RequireRole roles={["admin", "picker"]}>
+              <RequireRole roles={["admin", "summarizer"]}>
                 <PickupPage />
               </RequireRole>
             }
@@ -96,7 +105,7 @@ export default function App() {
           <Route
             path="/packing"
             element={
-              <RequireRole roles={["admin", "packer"]}>
+              <RequireRole roles={["admin", "summarizer"]}>
                 <PackingPage />
               </RequireRole>
             }
@@ -120,7 +129,7 @@ export default function App() {
           <Route
             path="/income"
             element={
-              <RequireRole roles={["admin"]}>
+              <RequireRole roles={["admin", "summarizer"]}>
                 <IncomePage />
               </RequireRole>
             }
@@ -128,7 +137,7 @@ export default function App() {
           <Route
             path="/expenses"
             element={
-              <RequireRole roles={["admin"]}>
+              <RequireRole roles={["admin", "summarizer"]}>
                 <ExpensesPage />
               </RequireRole>
             }

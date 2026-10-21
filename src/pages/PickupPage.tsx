@@ -120,7 +120,12 @@ export function PickupPage() {
     records.find((record) => record.id === paymentTargetId) ?? null;
 
   const canEdit = (record: PickupRecord) =>
+    user?.role === "admin" ||
+    user?.role === "summarizer" ||
+    record.createdBy === user?.id;
+  const canDelete = (record: PickupRecord) =>
     user?.role === "admin" || record.createdBy === user?.id;
+  const canManagePayments = user?.role === "admin";
 
   return (
     <div>
@@ -133,12 +138,16 @@ export function PickupPage() {
                 {t("pickups.manageStores")}
               </GhostButton>
             ) : null}
-            <GhostButton onClick={() => setSettleOpen(true)}>
-              {t("pickups.batchSettle")}
-            </GhostButton>
-            <PrimaryButton onClick={() => setEditing("new")}>
-              {t("pickups.add")}
-            </PrimaryButton>
+            {user?.role === "admin" ? (
+              <GhostButton onClick={() => setSettleOpen(true)}>
+                {t("pickups.batchSettle")}
+              </GhostButton>
+            ) : null}
+            {user?.role !== "summarizer" ? (
+              <PrimaryButton onClick={() => setEditing("new")}>
+                {t("pickups.add")}
+              </PrimaryButton>
+            ) : null}
           </div>
         }
       />
@@ -343,41 +352,43 @@ export function PickupPage() {
                         ) : null}
                       </div>
                       <div className="flex shrink-0 flex-col gap-1">
+                        {canManagePayments ? (
+                          <GhostButton
+                            onClick={() => setPaymentTargetId(record.id)}
+                          >
+                            {outstanding > 0
+                              ? t("pickups.addPayment")
+                              : t("pickups.paymentRecords")}
+                          </GhostButton>
+                        ) : null}
                         {canEdit(record) ? (
-                          <>
-                            <GhostButton
-                              onClick={() => setPaymentTargetId(record.id)}
-                            >
-                              {outstanding > 0
-                                ? t("pickups.addPayment")
-                                : t("pickups.paymentRecords")}
-                            </GhostButton>
-                            <GhostButton onClick={() => setEditing(record)}>
-                              {t("common.edit")}
-                            </GhostButton>
-                            <GhostButton
-                              danger
-                              onClick={() => {
-                                if (!window.confirm(t("pickups.deleteConfirm"))) return;
-                                void deleteRecord(record.id)
-                                  .then(() =>
-                                    flash({ type: "ok", message: t("pickups.deleted") }),
-                                  )
-                                  .catch((error) =>
-                                    flash({
-                                      type: "error",
-                                      message:
-                                        error instanceof Error &&
-                                        error.message === "pickup-has-payments"
-                                          ? t("pickups.hasPaymentsCannotDelete")
-                                          : String(error),
-                                    }),
-                                  );
-                              }}
-                            >
-                              {t("common.delete")}
-                            </GhostButton>
-                          </>
+                          <GhostButton onClick={() => setEditing(record)}>
+                            {t("common.edit")}
+                          </GhostButton>
+                        ) : null}
+                        {canDelete(record) ? (
+                          <GhostButton
+                            danger
+                            onClick={() => {
+                              if (!window.confirm(t("pickups.deleteConfirm"))) return;
+                              void deleteRecord(record.id)
+                                .then(() =>
+                                  flash({ type: "ok", message: t("pickups.deleted") }),
+                                )
+                                .catch((error) =>
+                                  flash({
+                                    type: "error",
+                                    message:
+                                      error instanceof Error &&
+                                      error.message === "pickup-has-payments"
+                                        ? t("pickups.hasPaymentsCannotDelete")
+                                        : String(error),
+                                  }),
+                                );
+                            }}
+                          >
+                            {t("common.delete")}
+                          </GhostButton>
                         ) : null}
                       </div>
                     </div>
@@ -417,7 +428,7 @@ export function PickupPage() {
       {paymentTarget ? (
         <PaymentSheet
           record={paymentTarget}
-          canVoid={canEdit(paymentTarget)}
+          canVoid={canManagePayments}
           onClose={() => setPaymentTargetId(null)}
           onAdd={async (input) => {
             await addPayment(paymentTarget.id, input);

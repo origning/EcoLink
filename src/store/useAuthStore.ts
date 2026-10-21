@@ -19,7 +19,14 @@ type AuthState = {
 
 const LOCAL_USER: AuthUser = { id: "local", username: "local", role: "admin" };
 const TEST_ROLE_KEY = "ecolink:test-role";
-const ROLES: UserRole[] = ["admin", "editor", "picker", "packer", "summarizer"];
+const ROLES: UserRole[] = [
+  "admin",
+  "editor",
+  "uploader",
+  "picker",
+  "packer",
+  "summarizer",
+];
 
 function readTestRole(): UserRole | null {
   if (typeof window === "undefined") return null;

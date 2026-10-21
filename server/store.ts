@@ -360,6 +360,25 @@ export function createFileStore(
       };
     }
 
+    if (user.role === "uploader") {
+      return {
+        ...db,
+        settings: restrictedSettings,
+        groups: [],
+        ingredients: [],
+        buyers: minimalBuyers(db.buyers),
+        orders: [],
+        templates: [],
+        pickupRecords: db.pickupRecords.filter(
+          (record) => record.createdBy === user.id,
+        ),
+        packRecords: db.packRecords.filter(
+          (record) => record.createdBy === user.id,
+        ),
+        invoiceRecords: [],
+      };
+    }
+
     if (user.role === "picker") {
       return {
         ...db,
@@ -398,8 +417,6 @@ export function createFileStore(
     return {
       ...db,
       templates: [],
-      pickupRecords: [],
-      packRecords: [],
     };
   }
 
@@ -533,7 +550,13 @@ export function createFileStore(
   function canWriteImage(user: AuthUser | null, id: string) {
     if (!auth || !user) return true;
     if (user.role === "admin") return true;
-    if (user.role === "picker") return id.startsWith("pickup-");
+    if (
+      user.role === "uploader" ||
+      user.role === "picker" ||
+      user.role === "summarizer"
+    ) {
+      return id.startsWith("pickup-") || id.startsWith("pack-");
+    }
     if (user.role === "packer") return id.startsWith("pack-");
     return false;
   }
@@ -708,8 +731,8 @@ export function createFileStore(
     if (!kind) return false;
 
     const allowedRoles: UserRole[] = kind.isPickup
-      ? ["admin", "picker"]
-      : ["admin", "packer"];
+      ? ["admin", "uploader", "picker", "summarizer"]
+      : ["admin", "uploader", "packer", "summarizer"];
     if (!roleAllowed(user, allowedRoles)) {
       sendForbidden(res);
       return true;
@@ -726,13 +749,15 @@ export function createFileStore(
         sendJson(res, 400, { error: "invalid-date" });
         return true;
       }
+      const allowEmptyFields =
+        !auth || user?.role === "uploader" || user?.role === "admin";
       const storeName = text(body.storeName);
-      if (!storeName) {
+      if (!storeName && !allowEmptyFields) {
         sendJson(res, 400, { error: "store-required" });
         return true;
       }
       const logistics = text(body.logistics);
-      if (!kind.isPickup && !logistics) {
+      if (!kind.isPickup && !logistics && !allowEmptyFields) {
         sendJson(res, 400, { error: "logistics-required" });
         return true;
       }
@@ -740,7 +765,13 @@ export function createFileStore(
       const db = readDb();
       const list = kind.isPickup ? db.pickupRecords : db.packRecords;
       const existing = list.find((record) => record.id === id);
-      if (user && user.role !== "admin" && existing && existing.createdBy !== user.id) {
+      if (
+        user &&
+        user.role !== "admin" &&
+        user.role !== "summarizer" &&
+        existing &&
+        existing.createdBy !== user.id
+      ) {
         sendForbidden(res);
         return true;
       }

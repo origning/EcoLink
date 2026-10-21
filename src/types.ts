@@ -1,6 +1,12 @@
 export type Locale = "zh" | "en";
 
-export type UserRole = "admin" | "editor" | "picker" | "packer" | "summarizer";
+export type UserRole =
+  | "admin"
+  | "editor"
+  | "uploader"
+  | "picker"
+  | "packer"
+  | "summarizer";
 
 /** 已登录用户（不含密码哈希） */
 export type AuthUser = {
