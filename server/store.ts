@@ -40,6 +40,7 @@ const BACKUP_FORMAT = "ecolink-backup";
 const BACKUP_VERSION = 1;
 const MAX_BACKUP_BYTES = 80 * 1024 * 1024;
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+const MAX_PDF_BYTES = 10 * 1024 * 1024;
 const MAX_THUMB_BYTES = 512 * 1024;
 
 type CollectionKey =
@@ -200,9 +201,12 @@ export function createFileStore(
   function imagePath(id: string, kind: "preview" | "thumb") {
     const safe = id.replace(/[^a-zA-Z0-9_-]/g, "");
     if (!safe || safe !== id) return null;
+    const isPdf = id.endsWith("-pdf");
     return path.join(
       imagesDir,
-      kind === "thumb" ? `${safe}.thumb.jpg` : `${safe}.jpg`,
+      kind === "thumb"
+        ? `${safe}.thumb.jpg`
+        : `${safe}.${isPdf ? "pdf" : "jpg"}`,
     );
   }
 
@@ -213,7 +217,13 @@ export function createFileStore(
     }
     const data = fs.readFileSync(filePath);
     res.statusCode = 200;
-    res.setHeader("Content-Type", "image/jpeg");
+    res.setHeader(
+      "Content-Type",
+      filePath.endsWith(".pdf") ? "application/pdf" : "image/jpeg",
+    );
+    if (filePath.endsWith(".pdf")) {
+      res.setHeader("Content-Disposition", "inline");
+    }
     res.setHeader("Cache-Control", "no-cache");
     res.end(data);
   }
@@ -250,7 +260,9 @@ export function createFileStore(
     ensureData();
     const ids = new Set<string>();
     for (const file of fs.readdirSync(imagesDir)) {
-      const match = file.match(/^([a-zA-Z0-9_-]+)(?:\.thumb)?\.jpg$/);
+      const match = file.match(
+        /^([a-zA-Z0-9_-]+?)(?:\.thumb)?\.(?:jpg|pdf)$/,
+      );
       if (match) ids.add(match[1]);
     }
     return [...ids];
@@ -360,6 +372,25 @@ export function createFileStore(
       };
     }
 
+    if (user.role === "uploader") {
+      return {
+        ...db,
+        settings: restrictedSettings,
+        groups: [],
+        ingredients: [],
+        buyers: minimalBuyers(db.buyers),
+        orders: [],
+        templates: [],
+        pickupRecords: db.pickupRecords.filter(
+          (record) => record.createdBy === user.id,
+        ),
+        packRecords: db.packRecords.filter(
+          (record) => record.createdBy === user.id,
+        ),
+        invoiceRecords: [],
+      };
+    }
+
     if (user.role === "picker") {
       return {
         ...db,
@@ -398,8 +429,6 @@ export function createFileStore(
     return {
       ...db,
       templates: [],
-      pickupRecords: [],
-      packRecords: [],
     };
   }
 
@@ -533,7 +562,16 @@ export function createFileStore(
   function canWriteImage(user: AuthUser | null, id: string) {
     if (!auth || !user) return true;
     if (user.role === "admin") return true;
-    if (user.role === "picker") return id.startsWith("pickup-");
+    if (user.role === "summarizer") {
+      return (
+        id.startsWith("pickup-") ||
+        id.startsWith("pack-") ||
+        id.startsWith("invoice-")
+      );
+    }
+    if (user.role === "uploader" || user.role === "picker") {
+      return id.startsWith("pickup-") || id.startsWith("pack-");
+    }
     if (user.role === "packer") return id.startsWith("pack-");
     return false;
   }
@@ -708,8 +746,8 @@ export function createFileStore(
     if (!kind) return false;
 
     const allowedRoles: UserRole[] = kind.isPickup
-      ? ["admin", "picker"]
-      : ["admin", "packer"];
+      ? ["admin", "uploader", "picker", "summarizer"]
+      : ["admin", "uploader", "packer", "summarizer"];
     if (!roleAllowed(user, allowedRoles)) {
       sendForbidden(res);
       return true;
@@ -726,13 +764,15 @@ export function createFileStore(
         sendJson(res, 400, { error: "invalid-date" });
         return true;
       }
+      const allowEmptyFields =
+        !auth || user?.role === "uploader" || user?.role === "admin";
       const storeName = text(body.storeName);
-      if (!storeName) {
+      if (!storeName && !allowEmptyFields) {
         sendJson(res, 400, { error: "store-required" });
         return true;
       }
       const logistics = text(body.logistics);
-      if (!kind.isPickup && !logistics) {
+      if (!kind.isPickup && !logistics && !allowEmptyFields) {
         sendJson(res, 400, { error: "logistics-required" });
         return true;
       }
@@ -740,7 +780,13 @@ export function createFileStore(
       const db = readDb();
       const list = kind.isPickup ? db.pickupRecords : db.packRecords;
       const existing = list.find((record) => record.id === id);
-      if (user && user.role !== "admin" && existing && existing.createdBy !== user.id) {
+      if (
+        user &&
+        user.role !== "admin" &&
+        user.role !== "summarizer" &&
+        existing &&
+        existing.createdBy !== user.id
+      ) {
         sendForbidden(res);
         return true;
       }
@@ -864,7 +910,7 @@ export function createFileStore(
       /^\/api\/invoices\/([^/]+)\/payments(?:\/([^/]+)\/void)?$/,
     );
     if (paymentMatch) {
-      if (!isAdmin(user)) {
+      if (!roleAllowed(user, ["admin", "summarizer"])) {
         sendForbidden(res);
         return true;
       }
@@ -950,35 +996,73 @@ export function createFileStore(
     }
     const body = await readJsonBody<Partial<InvoiceRecord>>(req);
     const invoiceNo = text(body.invoiceNo);
-    if (!invoiceNo || !text(body.buyerId) || !body.snapshot) {
+    const snapshot = body.snapshot as
+      | {
+          total?: unknown;
+          issuedAt?: unknown;
+          currency?: unknown;
+          billTo?: { name?: unknown };
+        }
+      | undefined;
+    if (
+      !invoiceNo ||
+      !text(body.buyerId) ||
+      !snapshot ||
+      !Number.isFinite(Number(snapshot.total)) ||
+      Number(snapshot.total) < 0 ||
+      !text(snapshot.issuedAt) ||
+      !text(snapshot.currency) ||
+      !text(snapshot.billTo?.name)
+    ) {
       sendJson(res, 400, { error: "invalid-invoice" });
       return true;
     }
     const db = readDb();
-    if (db.invoiceRecords.some((record) => record.invoiceNo === invoiceNo)) {
-      sendJson(res, 400, { error: "invoice-number-taken" });
-      return true;
-    }
     const id = text(body.id) || `invoice-${crypto.randomUUID()}`;
-    if (db.invoiceRecords.some((record) => record.id === id)) {
-      sendJson(res, 400, { error: "invoice-exists" });
+    const existingIndex = db.invoiceRecords.findIndex(
+      (record) => record.id === id,
+    );
+    const existing = existingIndex >= 0 ? db.invoiceRecords[existingIndex] : null;
+    if (
+      db.invoiceRecords.some(
+        (record) => record.id !== id && record.invoiceNo === invoiceNo,
+      )
+    ) {
+      sendJson(res, 400, { error: "invoice-number-taken" });
       return true;
     }
     const numberFromBody = numberValue(body.invoiceNumber);
     const numberFromText = numberValue(
       Number((invoiceNo.match(/(\d+)$/) ?? [])[1]),
     );
-    const invoiceNumber = numberFromBody || numberFromText;
+    const invoiceNumber =
+      numberFromBody || numberFromText || existing?.invoiceNumber || 0;
     const next = normalizeInvoiceRecord({
+      ...existing,
       ...body,
       id,
       invoiceNo,
       invoiceNumber,
-      createdBy: user?.id ?? "local",
-      createdByName: user?.username ?? "local",
-      createdAt: Date.now(),
+      payments: Array.isArray(body.payments)
+        ? body.payments
+        : (existing?.payments ?? []),
+      createdBy: existing?.createdBy ?? user?.id ?? "local",
+      createdByName: existing?.createdByName ?? user?.username ?? "local",
+      createdAt: existing?.createdAt ?? Date.now(),
     });
-    db.invoiceRecords.push(next);
+    const paid = next.payments.reduce(
+      (sum, payment) => (payment.voidedAt ? sum : sum + payment.amount),
+      0,
+    );
+    if (next.snapshot.total + 0.0001 < paid) {
+      sendJson(res, 400, { error: "invoice-total-below-paid" });
+      return true;
+    }
+    if (existingIndex >= 0) {
+      db.invoiceRecords[existingIndex] = next;
+    } else {
+      db.invoiceRecords.push(next);
+    }
     if (invoiceNumber >= db.settings.invoice.nextInvoiceNumber) {
       db.settings.invoice.nextInvoiceNumber = invoiceNumber + 1;
     }
@@ -1314,7 +1398,13 @@ export function createFileStore(
           sendJson(res, 400, { error: "Both preview and thumb are required" });
           return;
         }
-        if (preview.length > MAX_IMAGE_BYTES || thumb.length > MAX_THUMB_BYTES) {
+        const maxPreviewBytes = id.endsWith("-pdf")
+          ? MAX_PDF_BYTES
+          : MAX_IMAGE_BYTES;
+        if (
+          preview.length > maxPreviewBytes ||
+          thumb.length > MAX_THUMB_BYTES
+        ) {
           sendJson(res, 413, { error: "image-too-large" });
           return;
         }

@@ -13,12 +13,12 @@ const COOKIE_NAME = "ecolink_session";
 export const USER_ROLES: UserRole[] = [
   "admin",
   "editor",
-  "picker",
-  "packer",
+  "uploader",
   "summarizer",
 ];
 
 export function normalizeRole(value: unknown): UserRole {
+  if (value === "picker" || value === "packer") return "uploader";
   return USER_ROLES.includes(value as UserRole) ? (value as UserRole) : "editor";
 }
 

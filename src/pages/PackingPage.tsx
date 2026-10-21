@@ -35,6 +35,7 @@ function toDraftPhotos(photos: PhotoRef[]): DraftPhoto[] {
     id: photo.id,
     rev: photo.rev,
     previewUrl: ingredientPreviewUrl(photo.id, photo.rev),
+    isPdf: photo.id.endsWith("-pdf"),
   }));
 }
 
@@ -93,6 +94,10 @@ export function PackingPage() {
   }, [records, buyers, invoices, start, end, keyword]);
 
   const canEdit = (record: PackRecord) =>
+    user?.role === "admin" ||
+    user?.role === "summarizer" ||
+    record.createdBy === user?.id;
+  const canDelete = (record: PackRecord) =>
     user?.role === "admin" || record.createdBy === user?.id;
 
   return (
@@ -100,9 +105,11 @@ export function PackingPage() {
       <PageTitle
         title={t("packing.title")}
         action={
-          <PrimaryButton onClick={() => setEditing("new")}>
-            {t("packing.add")}
-          </PrimaryButton>
+          user?.role !== "summarizer" ? (
+            <PrimaryButton onClick={() => setEditing("new")}>
+              {t("packing.add")}
+            </PrimaryButton>
+          ) : undefined
         }
       />
 
@@ -281,29 +288,29 @@ export function PackingPage() {
                       </div>
                       <div className="flex shrink-0 flex-col gap-1">
                         {canEdit(record) ? (
-                          <>
-                            <GhostButton onClick={() => setEditing(record)}>
-                              {t("common.edit")}
-                            </GhostButton>
-                            <GhostButton
-                              danger
-                              onClick={() => {
-                                if (!window.confirm(t("packing.deleteConfirm"))) return;
-                                void deleteRecord(record.id)
-                                  .then(() =>
-                                    flash({
-                                      type: "ok",
-                                      message: t("packing.deleted"),
-                                    }),
-                                  )
-                                  .catch((error) =>
-                                    flash({ type: "error", message: String(error) }),
-                                  );
-                              }}
-                            >
-                              {t("common.delete")}
-                            </GhostButton>
-                          </>
+                          <GhostButton onClick={() => setEditing(record)}>
+                            {t("common.edit")}
+                          </GhostButton>
+                        ) : null}
+                        {canDelete(record) ? (
+                          <GhostButton
+                            danger
+                            onClick={() => {
+                              if (!window.confirm(t("packing.deleteConfirm"))) return;
+                              void deleteRecord(record.id)
+                                .then(() =>
+                                  flash({
+                                    type: "ok",
+                                    message: t("packing.deleted"),
+                                  }),
+                                )
+                                .catch((error) =>
+                                  flash({ type: "error", message: String(error) }),
+                                );
+                            }}
+                          >
+                            {t("common.delete")}
+                          </GhostButton>
                         ) : null}
                       </div>
                     </div>
@@ -416,14 +423,6 @@ function PackingSheet({
           }
           if (!buyerId) {
             flash({ type: "error", message: t("packing.needBuyer") });
-            return;
-          }
-          if (photos.length === 0) {
-            flash({ type: "error", message: t("packing.needPhoto") });
-            return;
-          }
-          if (!initial && invoicePhotos.length === 0) {
-            flash({ type: "error", message: t("packing.needInvoicePhoto") });
             return;
           }
           setBusy(true);
@@ -556,7 +555,7 @@ function PackingSheet({
             </p>
           ) : null}
         </div>
-        <Field label={t("packing.photos")} hint={t("common.required")}>
+        <Field label={t("packing.photos")} hint={t("common.optional")}>
           <MultiPhotoPicker
             photos={photos}
             nextId={() => `${id}-photo-${crypto.randomUUID()}`}
@@ -583,9 +582,10 @@ function PackingSheet({
         </Field>
         <Field
           label={t("packing.invoicePhotos")}
-          hint={initial ? t("common.optional") : t("common.required")}
+          hint={t("common.optional")}
         >
           <MultiPhotoPicker
+            variant="document"
             photos={invoicePhotos}
             nextId={() => `${id}-invoice-${crypto.randomUUID()}`}
             onAdd={(photo) => setInvoicePhotos((prev) => [...prev, photo])}

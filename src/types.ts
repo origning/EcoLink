@@ -1,6 +1,12 @@
 export type Locale = "zh" | "en";
 
-export type UserRole = "admin" | "editor" | "picker" | "packer" | "summarizer";
+export type UserRole =
+  | "admin"
+  | "editor"
+  | "uploader"
+  | "picker"
+  | "packer"
+  | "summarizer";
 
 /** 已登录用户（不含密码哈希） */
 export type AuthUser = {
@@ -195,10 +201,13 @@ export type InvoiceSnapshot = {
   paymentNote: string;
   deliveryNote: string;
   currency: string;
+  /** 旧版税率，仅用于兼容旧数据；现在税额使用 tax 字段的具体金额 */
   taxRate: number;
   dueDays: number;
   billTo: { name: string; address: string; phone: string };
   shipTo: { name: string; address: string; phone: string };
+  /** 这张发票包含的食材类别名称（替代具体产品明细） */
+  ingredientCategories: string[];
   lines: InvoiceLineRecord[];
   subtotal: number;
   tax: number;
@@ -265,7 +274,9 @@ export type InvoiceSettings = {
   deliveryNote: string;
   currency: string;
   /** 税率（%），默认 0 */
-  taxRate: number;
+  taxAmount: number;
+  /** 旧版税率，仅用于兼容旧备份 */
+  taxRate?: number;
   /** 账期（天），默认 7 */
   dueDays: number;
   invoicePrefix: string;

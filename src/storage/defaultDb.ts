@@ -24,7 +24,7 @@ export const DEFAULT_INVOICE: InvoiceSettings = {
   deliveryNote:
     "Please inspect all goods upon delivery.\nAny claims for damaged or incorrect items must be made within 3 days of delivery.",
   currency: "$",
-  taxRate: 0,
+  taxAmount: 0,
   dueDays: 7,
   invoicePrefix: "INV-",
   nextInvoiceNumber: 3262,
@@ -55,7 +55,7 @@ export function normalizeInvoice(
     paymentNote: text(input?.paymentNote, DEFAULT_INVOICE.paymentNote),
     deliveryNote: text(input?.deliveryNote, DEFAULT_INVOICE.deliveryNote),
     currency: text(input?.currency, DEFAULT_INVOICE.currency),
-    taxRate: Math.min(100, Math.max(0, num(input?.taxRate, DEFAULT_INVOICE.taxRate))),
+    taxAmount: Math.max(0, num(input?.taxAmount, 0)),
     dueDays: Math.max(0, Math.round(num(input?.dueDays, DEFAULT_INVOICE.dueDays))),
     invoicePrefix: text(input?.invoicePrefix, DEFAULT_INVOICE.invoicePrefix),
     nextInvoiceNumber: Math.max(

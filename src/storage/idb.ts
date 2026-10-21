@@ -58,8 +58,8 @@ function decodeBase64(value: string) {
   return bytes;
 }
 
-function blobFromBase64(value: string) {
-  return new Blob([decodeBase64(value)], { type: "image/jpeg" });
+function blobFromBase64(value: string, type = "image/jpeg") {
+  return new Blob([decodeBase64(value)], { type });
 }
 
 function blobToBase64(blob: Blob) {
@@ -150,7 +150,10 @@ export async function idbPutImages(
   id: string,
   images: { preview: string; thumb: string },
 ) {
-  const preview = blobFromBase64(images.preview);
+  const preview = blobFromBase64(
+    images.preview,
+    id.endsWith("-pdf") ? "application/pdf" : "image/jpeg",
+  );
   const thumb = blobFromBase64(images.thumb);
   await withStore("images", "readwrite", (store) =>
     store.put({ preview, thumb }, id),
@@ -227,7 +230,12 @@ export async function idbPutBackup(payload: BackupFile) {
       for (const [id, files] of Object.entries(payload.images ?? {})) {
         store.put(
           {
-            preview: files.preview ? blobFromBase64(files.preview) : undefined,
+            preview: files.preview
+              ? blobFromBase64(
+                  files.preview,
+                  id.endsWith("-pdf") ? "application/pdf" : "image/jpeg",
+                )
+              : undefined,
             thumb: files.thumb ? blobFromBase64(files.thumb) : undefined,
           },
           id,

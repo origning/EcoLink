@@ -137,7 +137,24 @@ function quantity(value: number) {
 
 function invoicePage(item: BatchExportItem, labels: BatchPrintLabels) {
   const snapshot = item.snapshot;
-  const lines = snapshot.lines
+  const lineTotal = snapshot.lines.reduce(
+    (sum, line) => sum + line.amount,
+    0,
+  );
+  const displayLines =
+    snapshot.lines.length > 0 &&
+    Math.abs(lineTotal - snapshot.subtotal) < 0.01
+      ? snapshot.lines
+      : [
+          {
+            description:
+              snapshot.ingredientCategories.join(", ") || "Ingredients",
+            quantity: 1,
+            price: snapshot.subtotal,
+            amount: snapshot.subtotal,
+          },
+        ];
+  const lines = displayLines
     .map(
       (line) => `<tr>
         <td>${escapeHtml(line.description)}</td>
@@ -202,7 +219,7 @@ function invoicePage(item: BatchExportItem, labels: BatchPrintLabels) {
         snapshot.currency,
         snapshot.subtotal,
       )}</strong></p>
-      <p><span>${escapeHtml(labels.tax)} (${snapshot.taxRate}%)</span><strong>${money(
+      <p><span>${escapeHtml(labels.tax)}</span><strong>${money(
         snapshot.currency,
         snapshot.tax,
       )}</strong></p>
@@ -211,6 +228,13 @@ function invoicePage(item: BatchExportItem, labels: BatchPrintLabels) {
         snapshot.total,
       )}</strong></p>
     </div>
+    ${
+      snapshot.ingredientCategories.length > 0
+        ? `<p class="note"><strong>Ingredient categories:</strong> ${escapeHtml(
+            snapshot.ingredientCategories.join(", "),
+          )}</p>`
+        : ""
+    }
     ${
       bank
         ? `<p class="note"><strong>${escapeHtml(

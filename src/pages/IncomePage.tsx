@@ -273,11 +273,12 @@ export function IncomePage() {
                               ? t("pickups.statusPartial")
                               : t("pickups.statusUnpaid")}
                       </span>
-                      {user?.role === "admin" ? (
+                      {user?.role === "admin" ||
+                      user?.role === "summarizer" ? (
                         <GhostButton
                           onClick={() => setReceiptTarget(invoice)}
                         >
-                          {t("packing.receivePayment")}
+                          {t("invoice.updatePayment")}
                         </GhostButton>
                       ) : null}
                     </div>
