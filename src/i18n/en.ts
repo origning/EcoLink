@@ -613,8 +613,10 @@ export const en = {
     totalBelowPaid:
       "The invoice total cannot be lower than the amount already received. Void extra receipts first.",
     amountExGst: "Invoice amount (excl. GST)",
+    totalAmount: "Invoice amount (total, incl. GST)",
+    gstOverTotal: "GST cannot be greater than the invoice total.",
     requiredFields:
-      "Enter the invoice number, issue date, currency, customer name, and invoice amount.",
+      "Enter the invoice number, issue date, currency, customer name, and invoice total.",
   },
   data: {
     title: "Backup",

@@ -62,9 +62,13 @@ function matrixForBuyer(matrix: SummaryMatrix, buyerId: string): SummaryMatrix {
 }
 
 function withTotals(snapshot: InvoiceSnapshot): InvoiceSnapshot {
+  const total = Math.max(0, snapshot.total);
+  const tax = Math.max(0, snapshot.tax);
   return {
     ...snapshot,
-    total: snapshot.subtotal + snapshot.tax,
+    subtotal: Math.max(0, total - tax),
+    tax,
+    total,
   };
 }
 
@@ -648,9 +652,13 @@ function InvoiceRecordSheet({
       !snapshot.issuedAt ||
       !snapshot.currency.trim() ||
       !snapshot.billTo.name.trim() ||
-      snapshot.subtotal <= 0
+      snapshot.total <= 0
     ) {
       setError(t("invoice.requiredFields"));
+      return;
+    }
+    if (snapshot.tax > snapshot.total + 0.0001) {
+      setError(t("invoice.gstOverTotal"));
       return;
     }
     if (snapshot.total + 0.0001 < paid) {
@@ -731,14 +739,14 @@ function InvoiceRecordSheet({
         </Field>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <Field label={t("invoice.amountExGst")} hint={t("common.required")}>
+          <Field label={t("invoice.totalAmount")} hint={t("common.required")}>
             <TextInput
               type="number"
               min="0"
               step="0.01"
-              value={snapshot.subtotal}
+              value={snapshot.total}
               onChange={(event) =>
-                update({ subtotal: Number(event.target.value) || 0 })
+                update({ total: Number(event.target.value) || 0 })
               }
             />
           </Field>

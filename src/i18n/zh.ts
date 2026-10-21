@@ -592,8 +592,10 @@ export const zh = {
     updatePayment: "收款 / 修改付款状态",
     totalBelowPaid: "发票金额不能低于已收款金额，请先作废多余收款。",
     amountExGst: "发票金额（未含 GST）",
+    totalAmount: "发票金额（总金额，含 GST）",
+    gstOverTotal: "GST 金额不能大于发票总金额。",
     requiredFields:
-      "请填写发票号、开票日、币种、客户名称和发票金额。",
+      "请填写发票号、开票日、币种、客户名称和发票总金额。",
   },
   data: {
     title: "数据备份",
