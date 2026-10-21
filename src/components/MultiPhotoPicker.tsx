@@ -46,12 +46,15 @@ export function MultiPhotoPicker({
   onRemove,
   onError,
   labels,
+  variant = "standard",
 }: {
   photos: DraftPhoto[];
   nextId: () => string;
   onAdd: (photo: DraftPhoto) => void;
   onRemove: (key: string) => void;
   onError: (error: Error) => void;
+  /** 发票等文字材料使用高清晰度压缩 */
+  variant?: "standard" | "document";
   labels: {
     add: string;
     busy: string;
@@ -82,12 +85,22 @@ export function MultiPhotoPicker({
           });
           continue;
         }
-        const result = await compressPhoto(file, {
-          maxEdge: 1600,
-          quality: 0.8,
-          maxBytes: 600 * 1024,
-          thumbSize: 160,
-        });
+        const result = await compressPhoto(
+          file,
+          variant === "document"
+            ? {
+                maxEdge: 3000,
+                quality: 0.9,
+                maxBytes: 1.8 * 1024 * 1024,
+                thumbSize: 200,
+              }
+            : {
+                maxEdge: 1600,
+                quality: 0.8,
+                maxBytes: 600 * 1024,
+                thumbSize: 160,
+              },
+        );
         const id = nextId();
         onAdd({
           key: id,

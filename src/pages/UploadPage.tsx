@@ -374,6 +374,7 @@ function UploadSheet({
         {kind === "pickup" ? (
           <Field label={t("upload.pickupInvoicePhotos")} hint={t("common.optional")}>
             <MultiPhotoPicker
+              variant="document"
               photos={invoicePhotos}
               nextId={() => `${id}-invoice-${crypto.randomUUID()}`}
               onAdd={(photo) =>

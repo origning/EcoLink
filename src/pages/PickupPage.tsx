@@ -1380,6 +1380,7 @@ function PickupSheet({
           hint={t("common.optional")}
         >
           <MultiPhotoPicker
+            variant="document"
             photos={invoicePhotos}
             nextId={() => `${id}-invoice-${crypto.randomUUID()}`}
             onAdd={(photo) => setInvoicePhotos((prev) => [...prev, photo])}
