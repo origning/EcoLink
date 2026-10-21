@@ -627,7 +627,7 @@ function InvoiceSettingsSheet({
     setForm((prev) => ({ ...prev, ...patch }));
 
   const updateNumber = (
-    key: "taxRate" | "dueDays" | "nextInvoiceNumber",
+    key: "taxAmount" | "dueDays" | "nextInvoiceNumber",
     value: string,
   ) => {
     const parsed = Number(value);
@@ -733,14 +733,13 @@ function InvoiceSettingsSheet({
               onChange={(e) => update({ currency: e.target.value })}
             />
           </Field>
-          <Field label={t("invoice.taxRate")}>
+          <Field label={t("invoice.taxAmount")} hint={t("common.optional")}>
             <TextInput
               type="number"
               min="0"
-              max="100"
               step="0.01"
-              value={form.taxRate}
-              onChange={(e) => updateNumber("taxRate", e.target.value)}
+              value={form.taxAmount}
+              onChange={(e) => updateNumber("taxAmount", e.target.value)}
             />
           </Field>
           <Field label={t("invoice.dueDays")}>

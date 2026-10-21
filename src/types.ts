@@ -201,6 +201,7 @@ export type InvoiceSnapshot = {
   paymentNote: string;
   deliveryNote: string;
   currency: string;
+  /** 旧版税率，仅用于兼容旧数据；现在税额使用 tax 字段的具体金额 */
   taxRate: number;
   dueDays: number;
   billTo: { name: string; address: string; phone: string };
@@ -271,7 +272,9 @@ export type InvoiceSettings = {
   deliveryNote: string;
   currency: string;
   /** 税率（%），默认 0 */
-  taxRate: number;
+  taxAmount: number;
+  /** 旧版税率，仅用于兼容旧备份 */
+  taxRate?: number;
   /** 账期（天），默认 7 */
   dueDays: number;
   invoicePrefix: string;

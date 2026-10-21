@@ -578,6 +578,7 @@ export const en = {
     bankDetails: "Bank details",
     currency: "Currency symbol",
     taxRate: "Tax rate (%)",
+    taxAmount: "Tax amount",
     dueDays: "Payment terms (days)",
     invoicePrefix: "Invoice prefix",
     nextInvoiceNumber: "Next invoice number",
@@ -608,6 +609,8 @@ export const en = {
     updatePayment: "Receipt / payment status",
     totalBelowPaid:
       "The invoice total cannot be lower than the amount already received. Void extra receipts first.",
+    requiredFields:
+      "Enter the invoice number, issue date, currency, customer name, and keep at least one invoice line with a description and quantity.",
   },
   data: {
     title: "Backup",

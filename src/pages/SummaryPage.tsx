@@ -535,7 +535,7 @@ function withTotals(snapshot: InvoiceSnapshot): InvoiceSnapshot {
     amount: line.quantity * line.price,
   }));
   const subtotal = lines.reduce((sum, line) => sum + line.amount, 0);
-  const tax = subtotal * (snapshot.taxRate / 100);
+  const tax = snapshot.tax;
   return { ...snapshot, lines, subtotal, tax, total: subtotal + tax };
 }
 
@@ -559,7 +559,7 @@ export function initialInvoiceSnapshot(
     paymentNote: settings.paymentNote,
     deliveryNote: settings.deliveryNote,
     currency: settings.currency,
-    taxRate: settings.taxRate,
+    taxRate: 0,
     dueDays: settings.dueDays,
     billTo: { name: buyer.name, address: buyer.address, phone: buyer.phone },
     shipTo: { name: buyer.name, address: buyer.address, phone: buyer.phone },
@@ -653,6 +653,17 @@ export function InvoiceEditSheet({
       setError(t("invoice.needNumber"));
       return;
     }
+    if (
+      !snapshot.issuedAt ||
+      !snapshot.currency.trim() ||
+      !snapshot.billTo.name.trim() ||
+      !snapshot.lines.some(
+        (line) => line.description.trim() && line.quantity > 0,
+      )
+    ) {
+      setError(t("invoice.requiredFields"));
+      return;
+    }
     setError(null);
     setBusy(format);
     try {
@@ -718,20 +729,20 @@ export function InvoiceEditSheet({
         </p>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <Field label={t("invoice.number")}>
+          <Field label={t("invoice.number")} hint={t("common.required")}>
             <TextInput
               value={invoiceNo}
               onChange={(event) => setInvoiceNo(event.target.value)}
             />
           </Field>
-          <Field label={t("invoice.issueDate")}>
+          <Field label={t("invoice.issueDate")} hint={t("common.required")}>
             <TextInput
               type="date"
               value={snapshot.issuedAt}
               onChange={(event) => update({ issuedAt: event.target.value })}
             />
           </Field>
-          <Field label={t("invoice.dueDate")}>
+          <Field label={t("invoice.dueDate")} hint={t("common.optional")}>
             <TextInput
               type="date"
               value={snapshot.dueAt}
@@ -782,7 +793,7 @@ export function InvoiceEditSheet({
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="space-y-2 rounded-2xl bg-[var(--bg)] p-3">
             <p className="text-sm font-semibold">Bill to</p>
-            <Field label={t("common.name")}>
+            <Field label={t("common.name")} hint={t("common.required")}>
               <TextInput
                 value={snapshot.billTo.name}
                 onChange={(event) =>
@@ -790,7 +801,7 @@ export function InvoiceEditSheet({
                 }
               />
             </Field>
-            <Field label={t("buyers.address")}>
+            <Field label={t("buyers.address")} hint={t("common.optional")}>
               <TextInput
                 value={snapshot.billTo.address}
                 onChange={(event) =>
@@ -798,7 +809,7 @@ export function InvoiceEditSheet({
                 }
               />
             </Field>
-            <Field label={t("buyers.phone")}>
+            <Field label={t("buyers.phone")} hint={t("common.optional")}>
               <TextInput
                 value={snapshot.billTo.phone}
                 onChange={(event) =>
@@ -838,7 +849,12 @@ export function InvoiceEditSheet({
 
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold">{t("invoice.lines")}</p>
+            <p className="text-sm font-semibold">
+              {t("invoice.lines")}{" "}
+              <span className="text-xs text-[var(--muted)]">
+                {t("common.required")}
+              </span>
+            </p>
             <GhostButton onClick={addLine}>{t("invoice.addLine")}</GhostButton>
           </div>
           {snapshot.lines.map((line, index) => (
@@ -884,19 +900,18 @@ export function InvoiceEditSheet({
         </div>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Field label={t("invoice.taxRate")}>
+          <Field label={t("invoice.taxAmount")} hint={t("common.optional")}>
             <TextInput
               type="number"
               min="0"
-              max="100"
               step="0.01"
-              value={snapshot.taxRate}
+              value={snapshot.tax}
               onChange={(event) =>
-                update({ taxRate: Number(event.target.value) || 0 })
+                update({ tax: Number(event.target.value) || 0 })
               }
             />
           </Field>
-          <Field label={t("invoice.currency")}>
+          <Field label={t("invoice.currency")} hint={t("common.required")}>
             <TextInput
               value={snapshot.currency}
               onChange={(event) => update({ currency: event.target.value })}
@@ -910,9 +925,7 @@ export function InvoiceEditSheet({
             <span>{snapshot.subtotal.toFixed(2)}</span>
           </div>
           <div className="mt-1 flex justify-between">
-            <span>
-              {t("invoice.tax")} ({snapshot.taxRate}%)
-            </span>
+            <span>{t("invoice.tax")}</span>
             <span>{snapshot.tax.toFixed(2)}</span>
           </div>
           <div className="mt-1 flex justify-between font-semibold">

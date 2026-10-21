@@ -97,7 +97,7 @@ export function buildInvoiceData(
   );
 
   const subtotal = lines.reduce((sum, line) => sum + line.amount, 0);
-  const tax = subtotal * (settings.taxRate / 100);
+  const tax = settings.taxAmount;
 
   return {
     lines,
@@ -139,12 +139,11 @@ export function addInvoiceSheet(
     views: [{ state: "frozen", ySplit: 0 }],
   });
 
-  const lastCol = 5;
+  const lastCol = 4;
   sheet.getColumn(1).width = 46;
   sheet.getColumn(2).width = 10;
   sheet.getColumn(3).width = 12;
-  sheet.getColumn(4).width = 8;
-  sheet.getColumn(5).width = 16;
+  sheet.getColumn(4).width = 18;
 
   const merge = (row: number, from: number, to: number) => {
     if (to > from) sheet.mergeCells(row, from, row, to);
@@ -215,7 +214,7 @@ export function addInvoiceSheet(
   setCell(blockStart, 1, "Bill to", { bold: true, size: 9, color: MUTED });
   merge(blockStart, 3, 4);
   setCell(blockStart, 3, "Ship to", { bold: true, size: 9, color: MUTED });
-  setCell(blockStart, 5, settings.companyName, {
+  setCell(blockStart, 4, settings.companyName, {
     bold: true,
     size: 10,
     align: "right",
@@ -248,7 +247,7 @@ export function addInvoiceSheet(
     setCell(row, 1, billLines[i] ?? "", { size: 9, wrap: true });
     merge(row, 3, 4);
     setCell(row, 3, shipLines[i] ?? "", { size: 9, wrap: true });
-    setCell(row, 5, companyLines[i] ?? "", {
+    setCell(row, 4, companyLines[i] ?? "", {
       size: 9,
       align: "right",
       wrap: true,
@@ -263,7 +262,7 @@ export function addInvoiceSheet(
     { col: 1, to: 1, label: "Amount due" },
     { col: 2, to: 2, label: "Due date" },
     { col: 3, to: 3, label: "Issue date" },
-    { col: 4, to: 5, label: "Invoice number" },
+    { col: 4, to: 4, label: "Invoice number" },
   ];
   for (const item of labels) {
     merge(metaLabelRow, item.col, item.to);
@@ -278,13 +277,12 @@ export function addInvoiceSheet(
     bold: true,
     size: 11,
   });
-  merge(metaValueRow, 4, 5);
   setCell(metaValueRow, 4, invoiceNo, { bold: true, size: 11 });
   sheet.getRow(metaValueRow).height = 22;
 
   // 明细表
   const headerRow = metaValueRow + 2;
-  const headerLabels = ["Description", "Quantity", "Price", "Tax", "Amount"];
+  const headerLabels = ["Description", "Quantity", "Price", "Amount"];
   headerLabels.forEach((label, index) => {
     const cell = setCell(headerRow, index + 1, label, {
       bold: true,
@@ -304,11 +302,10 @@ export function addInvoiceSheet(
     setCell(rowIndex, 1, line.description, { size: 10, wrap: true });
     setCell(rowIndex, 2, line.quantity, { size: 10, align: "right" });
     setCell(rowIndex, 3, line.price, { size: 10, align: "right" });
-    setCell(rowIndex, 4, `${settings.taxRate}%`, { size: 10, align: "right" });
-    setCell(rowIndex, 5, line.amount, { size: 10, align: "right" });
+    setCell(rowIndex, 4, line.amount, { size: 10, align: "right" });
     sheet.getCell(rowIndex, 2).numFmt = "#,##0.##";
     sheet.getCell(rowIndex, 3).numFmt = "#,##0.00";
-    sheet.getCell(rowIndex, 5).numFmt = "#,##0.00";
+    sheet.getCell(rowIndex, 4).numFmt = "#,##0.00";
     for (let col = 1; col <= lastCol; col += 1) {
       sheet.getCell(rowIndex, col).border = {
         bottom: { style: "thin", color: { argb: "FFE5E7EB" } },
@@ -322,14 +319,12 @@ export function addInvoiceSheet(
   const totals: { label: string; value: number; bold?: boolean; size?: number }[] =
     [
       { label: "Subtotal", value: subtotal },
-      ...(settings.taxRate > 0
-        ? [{ label: `Tax (${settings.taxRate}%)`, value: tax }]
-        : []),
+      ...(tax > 0 ? [{ label: "Tax", value: tax }] : []),
       { label: "Total", value: total, bold: true },
       { label: "Amount due", value: total, bold: true, size: 12 },
     ];
   for (const item of totals) {
-    setCell(rowIndex, 4, item.label, {
+    setCell(rowIndex, 3, item.label, {
       size: item.size ? item.size - 1 : 10,
       bold: item.bold,
       align: "right",
@@ -337,7 +332,7 @@ export function addInvoiceSheet(
     });
     const valueCell = setCell(
       rowIndex,
-      5,
+      4,
       item.label === "Amount due"
         ? formatMoney(settings.currency, item.value)
         : formatAmount(item.value),
@@ -486,7 +481,6 @@ export function buildInvoiceHtml(
         <td>${escapeHtml(line.description)}</td>
         <td class="r">${line.quantity.toLocaleString("en-AU", { maximumFractionDigits: 3 })}</td>
         <td class="r">${formatAmount(line.price)}</td>
-        <td class="r">${settings.taxRate}%</td>
         <td class="r">${formatAmount(line.amount)}</td>
       </tr>`,
     )
@@ -588,7 +582,6 @@ export function buildInvoiceHtml(
           <th>Description</th>
           <th class="r">Quantity</th>
           <th class="r">Price</th>
-          <th class="r">Tax</th>
           <th class="r">Amount</th>
         </tr>
       </thead>
@@ -598,8 +591,8 @@ export function buildInvoiceHtml(
     <div class="totals">
       <div class="row"><span>Subtotal</span><span>${formatAmount(subtotal)}</span></div>
       ${
-        settings.taxRate > 0
-          ? `<div class="row"><span>Tax (${settings.taxRate}%)</span><span>${formatAmount(tax)}</span></div>`
+        tax > 0
+          ? `<div class="row"><span>Tax</span><span>${formatAmount(tax)}</span></div>`
           : ""
       }
       <div class="row"><span>Total</span><span>${formatAmount(total)}</span></div>
@@ -646,7 +639,7 @@ function settingsFromSnapshot(snapshot: InvoiceSnapshot): InvoiceSettings {
     paymentNote: snapshot.paymentNote,
     deliveryNote: snapshot.deliveryNote,
     currency: snapshot.currency,
-    taxRate: snapshot.taxRate,
+    taxAmount: snapshot.tax,
     dueDays: snapshot.dueDays,
     invoicePrefix: "",
     nextInvoiceNumber: 1,

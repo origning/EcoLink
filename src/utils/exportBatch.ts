@@ -202,7 +202,7 @@ function invoicePage(item: BatchExportItem, labels: BatchPrintLabels) {
         snapshot.currency,
         snapshot.subtotal,
       )}</strong></p>
-      <p><span>${escapeHtml(labels.tax)} (${snapshot.taxRate}%)</span><strong>${money(
+      <p><span>${escapeHtml(labels.tax)}</span><strong>${money(
         snapshot.currency,
         snapshot.tax,
       )}</strong></p>

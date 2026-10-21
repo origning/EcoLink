@@ -984,7 +984,24 @@ export function createFileStore(
     }
     const body = await readJsonBody<Partial<InvoiceRecord>>(req);
     const invoiceNo = text(body.invoiceNo);
-    if (!invoiceNo || !text(body.buyerId) || !body.snapshot) {
+    const snapshot = body.snapshot as
+      | {
+          lines?: unknown;
+          issuedAt?: unknown;
+          currency?: unknown;
+          billTo?: { name?: unknown };
+        }
+      | undefined;
+    if (
+      !invoiceNo ||
+      !text(body.buyerId) ||
+      !snapshot ||
+      !Array.isArray(snapshot.lines) ||
+      snapshot.lines.length === 0 ||
+      !text(snapshot.issuedAt) ||
+      !text(snapshot.currency) ||
+      !text(snapshot.billTo?.name)
+    ) {
       sendJson(res, 400, { error: "invalid-invoice" });
       return true;
     }

@@ -559,6 +559,7 @@ export const zh = {
     bankDetails: "银行信息",
     currency: "货币符号",
     taxRate: "税率（%）",
+    taxAmount: "税额（具体金额）",
     dueDays: "账期（天）",
     invoicePrefix: "发票号前缀",
     nextInvoiceNumber: "下一个发票号",
@@ -588,6 +589,8 @@ export const zh = {
     recordSaved: "发票已更新",
     updatePayment: "收款 / 修改付款状态",
     totalBelowPaid: "发票金额不能低于已收款金额，请先作废多余收款。",
+    requiredFields:
+      "请填写发票号、开票日、币种、客户名称，并至少保留一条有名称和数量的发票明细。",
   },
   data: {
     title: "数据备份",
