@@ -1330,6 +1330,7 @@ function OrdersByDateSheet({
 
   return (
     <Sheet
+      wide
       title={detailOrder ? t("orders.orderDetail") : t("orders.viewByDate")}
       onClose={onClose}
     >
@@ -1400,7 +1401,7 @@ function OrdersByDateSheet({
               {t("orders.noOrdersOnDate")}
             </p>
           ) : (
-            <ul className="space-y-2">
+            <ul className="grid gap-2 sm:grid-cols-2">
               {dayOrders.map((order) => {
                 const rows = itemRows(order);
                 const totalQty = order.items.reduce(
@@ -1507,7 +1508,7 @@ function OrderHistorySheet({
   }, [orders, buyerMap, ingredientMap, effFrom, effTo, keyword]);
 
   return (
-    <Sheet title={t("orders.historyTitle")} onClose={onClose}>
+    <Sheet wide title={t("orders.historyTitle")} onClose={onClose}>
       <div className="space-y-3">
         <p className="text-xs text-[var(--muted)]">{t("orders.historyHint")}</p>
         <div className="inline-flex rounded-[9px] border border-[var(--line)] bg-[var(--surface)] p-0.5">
@@ -1582,7 +1583,7 @@ function OrderHistorySheet({
             {t("orders.historyNoMatch")}
           </p>
         ) : (
-          <ul className="space-y-2">
+          <ul className="grid gap-2 sm:grid-cols-2">
             {filtered.map((order) => {
               const buyer = buyerMap.get(order.buyerId);
               const itemNames = order.items

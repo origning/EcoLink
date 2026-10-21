@@ -230,14 +230,22 @@ export function Sheet({
   title,
   children,
   onClose,
+  wide = false,
 }: {
   title: string;
   children: ReactNode;
   onClose: () => void;
+  wide?: boolean;
 }) {
   return (
     <div className="backdrop-in fixed inset-0 z-40 flex items-end justify-center bg-black/40 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur-[2px] sm:items-center sm:p-4">
-      <div className="sheet-in flex max-h-[min(90dvh,calc(100dvh-env(safe-area-inset-top)-1rem))] w-full max-w-lg flex-col overflow-hidden rounded-[24px] bg-white shadow-[0_32px_80px_-24px_rgba(23,23,23,0.45)] sm:max-w-xl lg:max-w-2xl">
+      <div
+        className={`sheet-in flex max-h-[min(90dvh,calc(100dvh-env(safe-area-inset-top)-1rem))] w-full flex-col overflow-hidden rounded-[24px] bg-white shadow-[0_32px_80px_-24px_rgba(23,23,23,0.45)] ${
+          wide
+            ? "max-w-lg sm:max-w-3xl lg:max-w-5xl"
+            : "max-w-lg sm:max-w-xl lg:max-w-2xl"
+        }`}
+      >
         <span
           aria-hidden
           className="mx-auto mt-2 block h-1 w-10 shrink-0 rounded-full bg-[var(--line-strong)] sm:hidden"
