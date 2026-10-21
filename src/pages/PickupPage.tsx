@@ -304,7 +304,11 @@ export function PickupPage() {
                               count: record.invoicePhotos.length,
                             })}
                           </span>
-                        ) : null}
+                        ) : (
+                          <span className="rounded-full bg-red-50 px-1.5 py-0.5 text-[10px] font-semibold text-red-600">
+                            {t("pickups.noInvoice")}
+                          </span>
+                        )}
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">

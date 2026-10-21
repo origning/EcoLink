@@ -36,6 +36,7 @@ export function UploadPage() {
   const { t } = useTranslation();
   const pickups = useAppStore((s) => s.pickupRecords);
   const packs = useAppStore((s) => s.packRecords);
+  const stores = useAppStore((s) => s.stores);
   const savePickup = useAppStore((s) => s.savePickupRecord);
   const savePack = useAppStore((s) => s.savePackRecord);
   const deletePickup = useAppStore((s) => s.deletePickupRecord);
@@ -108,6 +109,11 @@ export function UploadPage() {
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="font-medium">{record.date}</p>
+                    {isPickup && pickup?.storeName ? (
+                      <p className="mt-0.5 text-sm font-medium">
+                        {t("upload.supplier")}: {pickup.storeName}
+                      </p>
+                    ) : null}
                     <p className="mt-0.5 text-xs text-[var(--muted)]">
                       {t("upload.photoCount", { count: record.photos.length })}
                       {isPickup && pickup && pickup.invoicePhotos.length > 0
@@ -120,6 +126,11 @@ export function UploadPage() {
                       <p className="mt-1 text-sm text-[var(--ink)]">
                         {record.note}
                       </p>
+                    ) : null}
+                    {isPickup && pickup && pickup.invoicePhotos.length === 0 ? (
+                      <span className="mt-1 mr-1 inline-flex rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-600">
+                        {t("upload.noInvoice")}
+                      </span>
                     ) : null}
                     {pending ? (
                       <span className="mt-1 inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
@@ -166,8 +177,10 @@ export function UploadPage() {
 
       {editing ? (
         <UploadSheet
+          key={editing === "new" ? "new" : editing.id}
           kind={kind}
           initial={editing === "new" ? null : editing}
+          suppliers={stores.map((store) => store.name)}
           onClose={() => setEditing(null)}
           onSave={async (input) => {
             if (kind === "pickup") {
@@ -176,7 +189,7 @@ export function UploadPage() {
               await savePickup({
                 id: existing?.id ?? input.id,
                 date: input.date,
-                storeName: existing?.storeName ?? "",
+                storeName: input.storeName,
                 tax: existing?.tax ?? 0,
                 amount: existing?.amount ?? 0,
                 note: input.note,
@@ -212,15 +225,18 @@ export function UploadPage() {
 function UploadSheet({
   kind,
   initial,
+  suppliers,
   onClose,
   onSave,
 }: {
   kind: UploadKind;
   initial: PickupRecord | PackRecord | null;
+  suppliers: string[];
   onClose: () => void;
   onSave: (input: {
     id: string;
     date: string;
+    storeName: string;
     note: string;
     photos: {
       id: string;
@@ -245,6 +261,11 @@ function UploadSheet({
         : `pack-${crypto.randomUUID()}`),
   );
   const [date, setDate] = useState(initial?.date ?? todayIso());
+  const [storeName, setStoreName] = useState(
+    kind === "pickup" && initial
+      ? (initial as PickupRecord).storeName
+      : "",
+  );
   const [note, setNote] = useState(initial?.note ?? "");
   const [photos, setPhotos] = useState<DraftPhoto[]>(() =>
     toDraftPhotos(initial?.photos ?? []),
@@ -271,10 +292,15 @@ function UploadSheet({
             flash({ type: "error", message: t("upload.needDate") });
             return;
           }
+          if (kind === "pickup" && !storeName.trim()) {
+            flash({ type: "error", message: t("upload.needSupplier") });
+            return;
+          }
           setBusy(true);
           void onSave({
             id,
             date,
+            storeName: storeName.trim(),
             note: note.trim(),
             photos: photos.map((photo) => ({
               id: photo.id,
@@ -301,6 +327,20 @@ function UploadSheet({
             onChange={(event) => setDate(event.target.value)}
           />
         </Field>
+        {kind === "pickup" ? (
+          <Field label={t("upload.supplier")} hint={t("common.required")}>
+            <TextInput
+              list="upload-supplier-options"
+              value={storeName}
+              onChange={(event) => setStoreName(event.target.value)}
+            />
+            <datalist id="upload-supplier-options">
+              {suppliers.map((name) => (
+                <option key={name} value={name} />
+              ))}
+            </datalist>
+          </Field>
+        ) : null}
         <Field
           label={
             kind === "pickup" ? t("upload.pickupPhotos") : t("upload.packPhotos")
